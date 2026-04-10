@@ -25,23 +25,55 @@
 
 ## Quick start
 
-要求：**Python 3.11+**
+推荐环境：**conda**
 
 ```bash
-/Users/wyb/miniconda3/bin/python3 -m venv .venv
-source .venv/bin/activate
-pip install -e .
-pip install pytest ruff
+conda env create -f environment.yml
+conda activate graduation-project
 ```
 
-## 开发命令
+如果你更新了 `environment.yml`，重新同步环境可以用：
 
 ```bash
-source .venv/bin/activate
-ruff format .
-ruff check .
-pytest -q
+conda env update -f environment.yml --prune
 ```
+
+## 最常用的日常命令
+
+如果你不想记很多命令，直接用：
+
+```bash
+conda activate graduation-project
+python scripts/dev.py all
+```
+
+它会依次执行：
+
+1. 格式化代码
+2. 检查代码
+3. 运行测试
+
+如果你只想单独运行其中一个：
+
+```bash
+python scripts/dev.py format
+python scripts/dev.py check
+python scripts/dev.py test
+```
+
+## 这些命令是做什么的
+
+- `format`：自动整理代码格式
+- `check`：检查明显错误和不规范写法
+- `test`：运行测试，确认改动没有把已有功能弄坏
+
+如果你 coding 基础还不强，可以把它们理解成：
+
+- `format` = 自动排版
+- `check` = 自动体检
+- `test` = 自动验收
+
+你不需要先精通这些工具，我会按这个流程帮你维持代码质量。
 
 ## 当前已实现的关键接口
 
@@ -120,7 +152,7 @@ dataset = ConstructionSite10kDataset.from_parquet(
 如需从 parquet 重新生成：
 
 ```bash
-source .venv/bin/activate
+conda activate graduation-project
 python scripts/build_balanced_15x5_registry.py \
   /Users/wyb/code/graduation-project/train-00001-of-00002.parquet \
   /Users/wyb/code/graduation-project/train-00002-of-00002.parquet
@@ -131,3 +163,4 @@ python scripts/build_balanced_15x5_registry.py \
 - `docs/superpowers/specs/2026-04-10-point1-foundation-design.md`
 - `docs/superpowers/plans/2026-04-10-point1-foundation.md`
 - `docs/09_point1_foundation_status.md`
+- `docs/11_beginner_workflow.md`

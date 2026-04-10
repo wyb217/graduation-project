@@ -14,6 +14,7 @@
 8. bbox / schema / parser / loader / registry 测试；
 9. README 的环境与命令说明；
 10. 冻结的 `balanced_15x5` 快速测试子集。
+11. conda-first 环境说明与初学者友好的开发脚本。
 
 ## 当前代码边界
 
