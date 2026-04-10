@@ -12,7 +12,8 @@
 6. JSON / parquet dataset loader；
 7. split registry 读取接口；
 8. bbox / schema / parser / loader / registry 测试；
-9. README 的环境与命令说明。
+9. README 的环境与命令说明；
+10. 冻结的 `balanced_15x5` 快速测试子集。
 
 ## 当前代码边界
 
@@ -39,6 +40,22 @@
 - `src/benchmark/constructionsite10k/parser.py`
 - `src/benchmark/constructionsite10k/loader.py`
 - `src/benchmark/constructionsite10k/registry.py`
+- `src/benchmark/constructionsite10k/subsets.py`
+- `src/benchmark/splits/constructionsite10k_balanced_15x5.json`
+
+## 快速测试子集说明
+
+已增加一个冻结子集：
+
+- 名称：`balanced_15x5`
+- 来源：train split
+- 选择策略：
+  - `clean`：四条规则都为 `null`
+  - `rule1~rule4`：仅该单条规则违规
+  - 多违规样本不进入该子集
+  - 每桶按 `image_id` 排序后取前 15
+
+因此总数是 **75**，不是 60。
 
 ## 下一阶段建议
 

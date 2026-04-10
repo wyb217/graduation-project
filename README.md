@@ -101,6 +101,31 @@ dataset = ConstructionSite10kDataset.from_parquet(
 2. official bridge wrapper
 3. Rule 1 evidence -> executor -> explanation 路径
 
+## 快速测试子集
+
+仓库已冻结一个快速测试子集 registry：
+
+- `src/benchmark/splits/constructionsite10k_balanced_15x5.json`
+
+它包含：
+
+- clean: 15
+- rule1: 15
+- rule2: 15
+- rule3: 15
+- rule4: 15
+
+总数是 **75**。之所以不是“60”，是因为 `4 rules + clean` 一共 5 个桶。
+
+如需从 parquet 重新生成：
+
+```bash
+source .venv/bin/activate
+python scripts/build_balanced_15x5_registry.py \
+  /Users/wyb/code/graduation-project/train-00001-of-00002.parquet \
+  /Users/wyb/code/graduation-project/train-00002-of-00002.parquet
+```
+
 更多实现状态见：
 
 - `docs/superpowers/specs/2026-04-10-point1-foundation-design.md`
