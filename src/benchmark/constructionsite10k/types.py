@@ -8,6 +8,14 @@ from common.schemas.bbox import NormalizedBBox
 
 
 @dataclass(frozen=True, slots=True)
+class SampleImage:
+    """Embedded image payload metadata from parquet exports."""
+
+    path: str | None
+    bytes: bytes | None
+
+
+@dataclass(frozen=True, slots=True)
 class SampleAttributes:
     """Scene-level attributes from ConstructionSite10k annotations."""
 
@@ -31,6 +39,7 @@ class ConstructionSiteSample:
     """A parsed benchmark sample with typed access to rules and object boxes."""
 
     image_id: str
+    image: SampleImage | None
     image_caption: str
     attributes: SampleAttributes
     violations: dict[int, RuleViolation | None]

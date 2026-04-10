@@ -7,12 +7,14 @@ from benchmark.constructionsite10k.types import (
     ConstructionSiteSample,
     RuleViolation,
     SampleAttributes,
+    SampleImage,
 )
 
 __all__ = [
     "ConstructionSite10kDataset",
     "ConstructionSiteSample",
     "RuleViolation",
+    "SampleImage",
     "SampleAttributes",
     "SplitRegistry",
     "parse_sample",

@@ -7,7 +7,7 @@
 - Python `src/` 工程骨架；
 - ConstructionSite10k benchmark 的 typed schema；
 - annotation parser；
-- dataset loader；
+- JSON / parquet dataset loader；
 - frozen split registry 读取接口；
 - Point 1 结构化输出 schema；
 - `ruff` / `pytest` 基础检查链路。
@@ -73,14 +73,27 @@ pytest -q
 ```python
 from pathlib import Path
 
-from benchmark.constructionsite10k import SplitRegistry, parse_sample
-from common.io.json_io import read_json
+from benchmark.constructionsite10k import ConstructionSite10kDataset, SplitRegistry
 
 registry = SplitRegistry.from_json(
     Path("src/benchmark/splits/constructionsite10k_example_registry.json")
 )
-sample = parse_sample(read_json(Path("tests/fixtures/constructionsite10k_sample.json")))
+dataset = ConstructionSite10kDataset.from_parquet(
+    [
+        Path("/Users/wyb/code/graduation-project/train-00001-of-00002.parquet"),
+        Path("/Users/wyb/code/graduation-project/train-00002-of-00002.parquet"),
+    ],
+    registry=registry,
+    split_name="train",
+)
 ```
+
+说明：
+
+- `from_json(...)` 仍可用于官方风格 JSON 样例或中间产物；
+- `from_parquet(...)` 用于真实 parquet shard；
+- parquet 默认 **不把图片 bytes 全量读入内存**，只保留 `image.path`；
+- 如后续确实需要嵌入图像字节，可传 `include_image_bytes=True`。
 
 ## 当前里程碑后的下一步
 
