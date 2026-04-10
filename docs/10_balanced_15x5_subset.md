@@ -54,8 +54,15 @@
 ## 文件位置
 
 - 冻结 registry：`src/benchmark/splits/constructionsite10k_balanced_15x5.json`
-- 生成脚本：`scripts/build_balanced_15x5_registry.py`
+- 生成脚本：`scripts/build_balanced_subset_registry.py`
 - 生成逻辑：`src/benchmark/constructionsite10k/subsets.py`
+
+说明：后续 baseline 阶段又增加了更贴合 API 调试流程的：
+
+- `balanced_dev_15x5`
+- `balanced_test_13x5`
+
+它们分别来自 train / test，用于 direct 与 5-shot baseline。
 
 ## 当前桶规模
 

@@ -12,6 +12,12 @@
 - Point 1 结构化输出 schema；
 - `ruff` / `pytest` 基础检查链路。
 
+当前正在进入 **Point 1 API baseline** 阶段：
+
+- direct / zero-shot baseline
+- 5-shot baseline
+- 优先走 OpenAI-compatible API provider
+
 ## 仓库边界
 
 - `src/point1`：ConstructionSite10k 四规则闭域方法
@@ -60,6 +66,22 @@ python scripts/dev.py format
 python scripts/dev.py check
 python scripts/dev.py test
 ```
+
+## baseline 配置
+
+第一次运行 API baseline 前，需要准备本地 provider 配置：
+
+```bash
+cp configs/system/providers.example.json configs/system/providers.local.json
+```
+
+然后把你自己的 provider 信息写进 `configs/system/providers.local.json`。
+
+当前代码支持 OpenAI-compatible provider 配置，优先推荐：
+
+1. `modelscope`
+2. `dashscope`
+3. 其他兼容 provider
 
 ## 这些命令是做什么的
 
@@ -137,25 +159,74 @@ dataset = ConstructionSite10kDataset.from_parquet(
 
 仓库已冻结一个快速测试子集 registry：
 
-- `src/benchmark/splits/constructionsite10k_balanced_15x5.json`
+- `src/benchmark/splits/constructionsite10k_balanced_dev_15x5.json`
+- `src/benchmark/splits/constructionsite10k_balanced_test_13x5.json`
 
-它包含：
+说明：
 
-- clean: 15
-- rule1: 15
-- rule2: 15
-- rule3: 15
-- rule4: 15
+- `balanced_dev_15x5` 来自 train，用于调 prompt / 固定 5-shot 示例
+- `balanced_test_13x5` 来自 test，用于快速评估
+- test 中满足“rule4 单违规”的纯净样本只有 13 张，所以 test 侧无法构造 15x5
 
-总数是 **75**。之所以不是“60”，是因为 `4 rules + clean` 一共 5 个桶。
+每个子集都只保留：
 
-如需从 parquet 重新生成：
+- clean
+- 单规则 rule1
+- 单规则 rule2
+- 单规则 rule3
+- 单规则 rule4
+
+如需从 parquet 重新生成 dev 子集：
 
 ```bash
 conda activate graduation-project
-python scripts/build_balanced_15x5_registry.py \
-  /Users/wyb/code/graduation-project/train-00001-of-00002.parquet \
-  /Users/wyb/code/graduation-project/train-00002-of-00002.parquet
+python scripts/build_balanced_subset_registry.py \
+  train-00001-of-00002.parquet \
+  train-00002-of-00002.parquet \
+  --subset-name balanced_dev_15x5 \
+  --output src/benchmark/splits/constructionsite10k_balanced_dev_15x5.json
+```
+
+如需从 parquet 重新生成 test 子集：
+
+```bash
+conda activate graduation-project
+python scripts/build_balanced_subset_registry.py \
+  test.parquet \
+  --subset-name balanced_test_13x5 \
+  --per-bucket 13 \
+  --output src/benchmark/splits/constructionsite10k_balanced_test_13x5.json
+```
+
+## baseline 运行命令
+
+### 1. direct / zero-shot
+
+```bash
+conda activate graduation-project
+python scripts/run_point1_api_baseline.py \
+  --provider modelscope \
+  --mode direct \
+  --target-parquet test.parquet \
+  --target-registry src/benchmark/splits/constructionsite10k_balanced_test_13x5.json \
+  --target-split balanced_test_13x5 \
+  --output artifacts/point1/direct-modelscope-balanced_test_13x5.json
+```
+
+### 2. 5-shot
+
+```bash
+conda activate graduation-project
+python scripts/run_point1_api_baseline.py \
+  --provider modelscope \
+  --mode five_shot \
+  --target-parquet test.parquet \
+  --target-registry src/benchmark/splits/constructionsite10k_balanced_test_13x5.json \
+  --target-split balanced_test_13x5 \
+  --few-shot-parquet train-00001-of-00002.parquet train-00002-of-00002.parquet \
+  --few-shot-registry src/benchmark/splits/constructionsite10k_balanced_dev_15x5.json \
+  --few-shot-split balanced_dev_15x5 \
+  --output artifacts/point1/fiveshot-modelscope-balanced_test_13x5.json
 ```
 
 更多实现状态见：
@@ -164,3 +235,4 @@ python scripts/build_balanced_15x5_registry.py \
 - `docs/superpowers/plans/2026-04-10-point1-foundation.md`
 - `docs/09_point1_foundation_status.md`
 - `docs/11_beginner_workflow.md`
+- `docs/12_point1_api_baseline.md`

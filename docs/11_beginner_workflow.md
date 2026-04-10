@@ -81,7 +81,9 @@ python scripts/dev.py all
 
 ```bash
 conda activate graduation-project
-python scripts/build_balanced_15x5_registry.py \
-  /Users/wyb/code/graduation-project/train-00001-of-00002.parquet \
-  /Users/wyb/code/graduation-project/train-00002-of-00002.parquet
+python scripts/build_balanced_subset_registry.py \
+  train-00001-of-00002.parquet \
+  train-00002-of-00002.parquet \
+  --subset-name balanced_dev_15x5 \
+  --output src/benchmark/splits/constructionsite10k_balanced_dev_15x5.json
 ```

@@ -15,6 +15,7 @@
 9. README 的环境与命令说明；
 10. 冻结的 `balanced_15x5` 快速测试子集。
 11. conda-first 环境说明与初学者友好的开发脚本。
+12. Point 1 API baseline（direct / 5-shot）骨架与 provider 配置入口。
 
 ## 当前代码边界
 
@@ -43,6 +44,11 @@
 - `src/benchmark/constructionsite10k/registry.py`
 - `src/benchmark/constructionsite10k/subsets.py`
 - `src/benchmark/splits/constructionsite10k_balanced_15x5.json`
+- `src/benchmark/splits/constructionsite10k_balanced_dev_15x5.json`
+- `src/benchmark/splits/constructionsite10k_balanced_test_13x5.json`
+- `src/point1/baselines/`
+- `scripts/run_point1_api_baseline.py`
+- `configs/system/providers.example.json`
 
 ## 快速测试子集说明
 

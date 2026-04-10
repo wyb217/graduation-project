@@ -140,6 +140,8 @@ celerybeat.pid
 .venv
 .worktrees/
 .omx/
+artifacts/point1/
+configs/system/providers.local.json
 env/
 venv/
 ENV/

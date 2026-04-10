@@ -72,3 +72,28 @@ def test_build_balanced_subset_registry_fails_when_bucket_is_too_small() -> None
         assert "rule1" in str(exc)
     else:
         raise AssertionError("expected ValueError")
+
+
+def test_build_balanced_subset_registry_respects_sample_filter() -> None:
+    """Optional sample filters should be applied before bucket selection."""
+    samples = (
+        _make_sample("c1", ()),
+        _make_sample("c2", ()),
+        _make_sample("r1a", (1,)),
+        _make_sample("r1b", (1,)),
+        _make_sample("r2a", (2,)),
+        _make_sample("r2b", (2,)),
+        _make_sample("r3a", (3,)),
+        _make_sample("r3b", (3,)),
+        _make_sample("r4a", (4,)),
+        _make_sample("r4b", (4,)),
+    )
+
+    registry = build_balanced_subset_registry(
+        samples,
+        per_bucket=1,
+        subset_name="filtered",
+        sample_filter=lambda sample: sample.image_id != "c1",
+    )
+
+    assert registry["filtered_clean"] == ("c2",)

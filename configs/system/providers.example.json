@@ -1,0 +1,25 @@
+{
+  "default_provider": "modelscope",
+  "providers": {
+    "modelscope": {
+      "base_url": "https://api-inference.modelscope.cn/v1",
+      "api_key": "replace-with-modelscope-token",
+      "model": "Qwen/Qwen3-VL-8B-Instruct"
+    },
+    "dashscope": {
+      "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      "api_key": "replace-with-dashscope-key",
+      "model": "qwen3-vl-flash"
+    },
+    "infini": {
+      "base_url": "https://cloud.infini-ai.com/maas/v1",
+      "api_key": "replace-with-infini-key",
+      "model": "fill-in-supported-vision-model"
+    },
+    "volcengine": {
+      "base_url": "https://ark.cn-beijing.volces.com/api/v3",
+      "api_key": "replace-with-volcengine-key",
+      "model": "fill-in-endpoint-id"
+    }
+  }
+}
