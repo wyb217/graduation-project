@@ -1,0 +1,18 @@
+{
+  "image_id": "0000424",
+  "image_caption": "A worker stands near an excavator at the construction site.",
+  "illumination": "normal lighting",
+  "camera_distance": "mid distance",
+  "view": "elevation view",
+  "quality_of_info": "rich info",
+  "rule_1_violation": {
+    "bounding_box": [[0.22, 0.59, 0.28, 0.75]],
+    "reason": "The worker on the left is on foot at the site and is not wearing a hard hat."
+  },
+  "rule_2_violation": null,
+  "rule_3_violation": null,
+  "rule_4_violation": null,
+  "excavator": [[0.55, 0.25, 0.92, 0.91]],
+  "rebar": [],
+  "worker_with_white_hard_hat": [[0.22, 0.59, 0.28, 0.75]]
+}
