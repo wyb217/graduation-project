@@ -20,6 +20,7 @@ def run_api_baseline(
     temperature: float = 0.0,
     max_tokens: int = 1200,
     show_progress: bool = False,
+    task_profile: str = "structured",
 ) -> list[Point1BaselineRecord]:
     """Run one API baseline over a sequence of target samples."""
     records: list[Point1BaselineRecord] = []
@@ -32,6 +33,7 @@ def run_api_baseline(
                 target_sample=target_sample,
                 mode=mode,
                 example_samples=example_samples,
+                task_profile=task_profile,
             )
             raw_response = client.complete(
                 messages=messages,
@@ -39,7 +41,7 @@ def run_api_baseline(
                 temperature=temperature,
                 max_tokens=max_tokens,
             )
-            parsed_output = parse_prediction_set_response(raw_response)
+            parsed_output = parse_prediction_set_response(raw_response, sample=target_sample)
             records.append(
                 Point1BaselineRecord(
                     image_id=target_sample.image_id,

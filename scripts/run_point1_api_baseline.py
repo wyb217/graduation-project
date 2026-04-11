@@ -28,6 +28,12 @@ def main() -> None:
         help="Baseline mode to run.",
     )
     parser.add_argument(
+        "--task-profile",
+        choices=("structured", "classification_only"),
+        default="structured",
+        help="Whether to request full structured outputs or classification-only outputs.",
+    )
+    parser.add_argument(
         "--target-parquet",
         nargs="+",
         type=Path,
@@ -88,6 +94,7 @@ def main() -> None:
         mode=args.mode,
         example_samples=example_samples,
         show_progress=True,
+        task_profile=args.task_profile,
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     write_json(args.output, [record.to_dict() for record in records])
@@ -98,6 +105,7 @@ def main() -> None:
             "provider_name": provider.name,
             "model_name": model_name,
             "mode": args.mode,
+            "task_profile": args.task_profile,
             "target_split": args.target_split,
             "num_records": len(records),
             "num_success": sum(record.parsed_output is not None for record in records),

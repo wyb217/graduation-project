@@ -81,3 +81,26 @@ def test_build_inference_messages_adds_five_shot_examples(
     assert messages[0]["role"] == "system"
     assert len(messages) == 12
     assert messages[-1]["role"] == "user"
+
+
+def test_build_inference_messages_supports_classification_only_profile(
+    sample_annotation: dict[str, object],
+) -> None:
+    """Classification-only prompting should explicitly force null bbox outputs."""
+    target_sample = parse_sample(
+        {
+            **sample_annotation,
+            "image_id": "target",
+            "image": {"bytes": b"target-image", "path": "target.jpg"},
+        }
+    )
+
+    messages = build_inference_messages(
+        target_sample=target_sample,
+        mode="direct",
+        example_samples=(),
+        task_profile="classification_only",
+    )
+
+    text_block = messages[-1]["content"][0]["text"]
+    assert "Always set target_bbox to null" in text_block
