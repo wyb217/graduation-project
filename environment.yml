@@ -1,0 +1,12 @@
+name: graduation-project
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pip
+  - pip:
+      - -e .
+      - openai>=1.108,<2
+      - pyarrow>=23,<24
+      - pytest>=9,<10
+      - ruff>=0.15,<0.16

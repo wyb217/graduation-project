@@ -9,16 +9,30 @@
 3. `common.schemas.Point1Prediction` / `Point1Evidence`；
 4. ConstructionSite10k typed sample / violation / attributes schema；
 5. annotation parser；
-6. dataset loader；
+6. JSON / parquet dataset loader；
 7. split registry 读取接口；
 8. bbox / schema / parser / loader / registry 测试；
-9. README 的环境与命令说明。
+9. README 的环境与命令说明；
+10. 冻结的 `balanced_15x5` 快速测试子集。
+11. conda-first 环境说明与初学者友好的开发脚本。
+12. Point 1 API baseline（direct / 5-shot）骨架与 provider 配置入口。
 
 ## 当前代码边界
 
 - Point 1 仍未接入任何 VLM、外部 API、RAG、LoRA、QLoRA；
 - Point 2 仅保留目录边界，不含实现；
 - Point 3 仅保留系统层占位目录。
+
+## parquet 数据支持
+
+当前 benchmark 层已经支持直接读取 ConstructionSite10k 的 parquet 文件。
+
+设计选择：
+
+- 复用同一套 typed schema，不为 parquet 单独造第二套协议；
+- parquet 中的 `image` 字段解析为 `SampleImage`；
+- 默认只保留 `image.path`，不默认保留 `image.bytes`，避免把整套数据集图片二进制一次性塞进内存；
+- 如后续 Point 1 baseline 需要直接从 parquet 取图像字节，可显式开启 `include_image_bytes=True`。
 
 ## 关键文件
 
@@ -28,6 +42,27 @@
 - `src/benchmark/constructionsite10k/parser.py`
 - `src/benchmark/constructionsite10k/loader.py`
 - `src/benchmark/constructionsite10k/registry.py`
+- `src/benchmark/constructionsite10k/subsets.py`
+- `src/benchmark/splits/constructionsite10k_balanced_15x5.json`
+- `src/benchmark/splits/constructionsite10k_balanced_dev_15x5.json`
+- `src/benchmark/splits/constructionsite10k_balanced_test_13x5.json`
+- `src/point1/baselines/`
+- `scripts/run_point1_api_baseline.py`
+- `configs/system/providers.example.json`
+
+## 快速测试子集说明
+
+已增加一个冻结子集：
+
+- 名称：`balanced_15x5`
+- 来源：train split
+- 选择策略：
+  - `clean`：四条规则都为 `null`
+  - `rule1~rule4`：仅该单条规则违规
+  - 多违规样本不进入该子集
+  - 每桶按 `image_id` 排序后取前 15
+
+因此总数是 **75**，不是 60。
 
 ## 下一阶段建议
 

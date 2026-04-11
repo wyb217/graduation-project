@@ -9,12 +9,14 @@ from benchmark.constructionsite10k.types import (
     ConstructionSiteSample,
     RuleViolation,
     SampleAttributes,
+    SampleImage,
 )
 from common.schemas.bbox import NormalizedBBox
 
 RULE_FIELD_PREFIX = "rule_"
 RULE_FIELD_SUFFIX = "_violation"
 BASE_SAMPLE_FIELDS = {
+    "image",
     "image_id",
     "image_caption",
     "illumination",
@@ -24,7 +26,11 @@ BASE_SAMPLE_FIELDS = {
 }
 
 
-def parse_sample(raw: Mapping[str, Any]) -> ConstructionSiteSample:
+def parse_sample(
+    raw: Mapping[str, Any],
+    *,
+    include_image_bytes: bool = True,
+) -> ConstructionSiteSample:
     """Parse one raw benchmark annotation into a typed sample."""
     image_id = str(raw["image_id"])
     attributes = SampleAttributes(
@@ -39,11 +45,25 @@ def parse_sample(raw: Mapping[str, Any]) -> ConstructionSiteSample:
 
     return ConstructionSiteSample(
         image_id=image_id,
+        image=_parse_image(raw.get("image"), include_image_bytes=include_image_bytes),
         image_caption=str(raw["image_caption"]),
         attributes=attributes,
         violations=violations,
         object_boxes=object_boxes,
     )
+
+
+def _parse_image(raw_image: Any, *, include_image_bytes: bool) -> SampleImage | None:
+    if raw_image is None:
+        return None
+    if not isinstance(raw_image, Mapping):
+        raise ValueError(f"Expected image payload to be a mapping, got {type(raw_image)!r}.")
+
+    raw_bytes = raw_image.get("bytes")
+    image_bytes = bytes(raw_bytes) if include_image_bytes and raw_bytes is not None else None
+    raw_path = raw_image.get("path")
+    image_path = str(raw_path) if raw_path is not None else None
+    return SampleImage(path=image_path, bytes=image_bytes)
 
 
 def _parse_violations(raw: Mapping[str, Any], *, image_id: str) -> dict[int, RuleViolation | None]:
