@@ -123,14 +123,19 @@ class LocalQwen3VLClient:
                 messages.append(
                     {
                         "role": "assistant",
-                        "content": json.dumps(
-                            build_example_prediction_set(
-                                example_sample,
-                                task_profile=task_profile,
-                            ).to_dict(),
-                            ensure_ascii=False,
-                            indent=2,
-                        ),
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": json.dumps(
+                                    build_example_prediction_set(
+                                        example_sample,
+                                        task_profile=task_profile,
+                                    ).to_dict(),
+                                    ensure_ascii=False,
+                                    indent=2,
+                                ),
+                            }
+                        ],
                     }
                 )
 
