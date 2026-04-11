@@ -87,6 +87,7 @@ def main() -> None:
         target_samples=tuple(target_samples),
         mode=args.mode,
         example_samples=example_samples,
+        show_progress=True,
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     write_json(args.output, [record.to_dict() for record in records])

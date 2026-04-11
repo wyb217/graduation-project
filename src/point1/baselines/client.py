@@ -27,11 +27,13 @@ class VisionLanguageClient(Protocol):
 class OpenAICompatibleVisionClient:
     """Small wrapper around the OpenAI Python SDK for compatible providers."""
 
-    def __init__(self, provider: ProviderConfig) -> None:
+    def __init__(self, provider: ProviderConfig, *, timeout_seconds: float = 120.0) -> None:
         self._client = OpenAI(
             api_key=provider.api_key,
             base_url=provider.base_url,
-            http_client=httpx.Client(trust_env=False),
+            timeout=timeout_seconds,
+            max_retries=2,
+            http_client=httpx.Client(trust_env=False, timeout=timeout_seconds),
         )
 
     def complete(
