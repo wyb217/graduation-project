@@ -60,7 +60,7 @@ huggingface-cli download Qwen/Qwen3-VL-8B-Instruct --local-dir /data/models/Qwen
 ```bash
 conda activate graduation-project
 python scripts/run_point1_local_qwen_baseline.py \
-  --model-path /data/models/Qwen3-VL-8B-Instruct \
+  --model-path /home/bml/storage/qwen3_models \
   --mode direct \
   --task-profile structured \
   --target-parquet test.parquet \
@@ -74,7 +74,7 @@ python scripts/run_point1_local_qwen_baseline.py \
 ```bash
 conda activate graduation-project
 python scripts/run_point1_local_qwen_baseline.py \
-  --model-path /data/models/Qwen3-VL-8B-Instruct \
+  --model-path /home/bml/storage/qwen3_models \
   --mode five_shot \
   --task-profile structured \
   --target-parquet test.parquet \
@@ -98,7 +98,7 @@ python scripts/run_point1_local_qwen_baseline.py \
 
 ```bash
 python scripts/run_point1_local_qwen_baseline.py \
-  --model-path /data/models/Qwen3-VL-8B-Instruct \
+  --model-path /home/bml/storage/qwen3_models \
   --mode direct \
   --task-profile classification_only \
   --target-parquet test.parquet \
