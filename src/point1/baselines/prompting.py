@@ -79,6 +79,55 @@ Rules:
 """.strip()
 
 
+AUTHOR_STYLE_FIVE_SHOT_STRUCTURED_PROMPT = """
+You are a construction site safety inspector.
+Review the image according to the following four safety rules:
+1. Basic PPE
+2. Safety harness when working at height without protection
+3. Edge protection / warning for underground projects
+4. Workers inside excavator blind spots or operating radius
+
+Return JSON only in this format:
+{
+  "image_id": "...",
+  "violated_rule_ids": [1, 3],
+  "explanation": "...",
+  "target_bbox": [x_min, y_min, x_max, y_max] or null
+}
+
+Requirements:
+- `violated_rule_ids` is a list of violated rule IDs.
+- Use an empty list if no visible rule is violated.
+- Give one short explanation covering the visible violation(s).
+- `target_bbox` should ground the main visible violation.
+- Use normalized coordinates between 0.0 and 1.0.
+""".strip()
+
+
+AUTHOR_STYLE_FIVE_SHOT_CLASSIFICATION_PROMPT = """
+You are a construction site safety inspector.
+Review the image according to the following four safety rules:
+1. Basic PPE
+2. Safety harness when working at height without protection
+3. Edge protection / warning for underground projects
+4. Workers inside excavator blind spots or operating radius
+
+Return JSON only in this format:
+{
+  "image_id": "...",
+  "violated_rule_ids": [1, 3],
+  "explanation": "...",
+  "target_bbox": null
+}
+
+Requirements:
+- `violated_rule_ids` is a list of violated rule IDs.
+- Use an empty list if no visible rule is violated.
+- Give one short explanation covering the visible violation(s).
+- Always set `target_bbox` to null.
+""".strip()
+
+
 def build_example_prediction_set(
     sample: ConstructionSiteSample,
     *,
@@ -151,20 +200,24 @@ def build_inference_messages(
     messages: list[dict[str, object]] = [{"role": "system", "content": SYSTEM_PROMPT}]
     if mode == "five_shot":
         for example_sample in example_samples:
-            messages.append(_build_user_message(example_sample, task_profile=task_profile))
+            messages.append(
+                _build_five_shot_user_message(example_sample, task_profile=task_profile)
+            )
             messages.append(
                 {
                     "role": "assistant",
                     "content": json.dumps(
-                        build_example_prediction_set(
+                        build_author_style_example_answer(
                             example_sample,
                             task_profile=task_profile,
-                        ).to_dict(),
+                        ),
                         ensure_ascii=False,
                         indent=2,
                     ),
                 }
             )
+        messages.append(_build_five_shot_user_message(target_sample, task_profile=task_profile))
+        return messages
     messages.append(_build_user_message(target_sample, task_profile=task_profile))
     return messages
 
@@ -183,9 +236,67 @@ def _build_user_message(sample: ConstructionSiteSample, *, task_profile: str) ->
     }
 
 
+def _build_five_shot_user_message(
+    sample: ConstructionSiteSample,
+    *,
+    task_profile: str,
+) -> dict[str, object]:
+    if sample.image is None or sample.image.bytes is None:
+        raise ValueError(f"Sample {sample.image_id} does not contain embedded image bytes.")
+    image_base64 = base64.b64encode(sample.image.bytes).decode("utf-8")
+    task_prompt = get_five_shot_task_prompt(task_profile)
+    return {
+        "role": "user",
+        "content": [
+            {"type": "text", "text": f"{task_prompt}\nImage ID: {sample.image_id}"},
+            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"}},
+        ],
+    }
+
+
 def get_task_prompt(task_profile: str) -> str:
     if task_profile == "structured":
         return STRUCTURED_TASK_PROMPT
     if task_profile == "classification_only":
         return CLASSIFICATION_ONLY_TASK_PROMPT
     raise ValueError(f"Unknown task_profile: {task_profile}")
+
+
+def get_five_shot_task_prompt(task_profile: str) -> str:
+    """Return the author-style prompt used for five-shot VQA."""
+    if task_profile == "structured":
+        return AUTHOR_STYLE_FIVE_SHOT_STRUCTURED_PROMPT
+    if task_profile == "classification_only":
+        return AUTHOR_STYLE_FIVE_SHOT_CLASSIFICATION_PROMPT
+    raise ValueError(f"Unknown task_profile: {task_profile}")
+
+
+def build_author_style_example_answer(
+    sample: ConstructionSiteSample,
+    *,
+    task_profile: str,
+) -> dict[str, object]:
+    """Build an author-style few-shot answer with violated rule IDs and one explanation."""
+    violated_rule_ids = [
+        rule_id for rule_id, violation in sorted(sample.violations.items()) if violation is not None
+    ]
+    explanation_parts = [
+        violation.reason
+        for _, violation in sorted(sample.violations.items())
+        if violation is not None and violation.reason
+    ]
+    explanation = (
+        "No visible safety violation." if not explanation_parts else " ".join(explanation_parts)
+    )
+    target_bbox = None
+    if task_profile == "structured":
+        for _, violation in sorted(sample.violations.items()):
+            if violation is not None and violation.bounding_boxes:
+                target_bbox = violation.bounding_boxes[0].to_list()
+                break
+    return {
+        "image_id": sample.image_id,
+        "violated_rule_ids": violated_rule_ids,
+        "explanation": explanation,
+        "target_bbox": target_bbox,
+    }

@@ -94,3 +94,14 @@ baseline 统一返回：
 - rule4 第 1 张
 
 这样可以确保 few-shot 提示完全可复现。
+
+## 当前 few-shot 形式
+
+当前 5-shot 代码已改成更接近论文描述的 author-style VQA few-shot：
+
+- 输入 5 个图像 + 5 个标注示例
+- 示例答案使用：
+  - `violated_rule_ids`
+  - `explanation`
+  - `target_bbox`
+- 最终输出仍会被适配回本仓库统一的四规则结构化协议，便于评测

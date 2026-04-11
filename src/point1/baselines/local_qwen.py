@@ -10,7 +10,11 @@ from typing import Any
 from benchmark.constructionsite10k.types import ConstructionSiteSample
 from common.schemas.point1 import Point1BaselineRecord
 from point1.baselines.parsing import parse_prediction_set_response
-from point1.baselines.prompting import build_example_prediction_set, get_task_prompt
+from point1.baselines.prompting import (
+    build_author_style_example_answer,
+    get_five_shot_task_prompt,
+    get_task_prompt,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -105,6 +109,7 @@ class LocalQwen3VLClient:
         messages: list[dict[str, Any]] = []
         if mode == "five_shot":
             for example_sample in example_samples:
+                prompt_text = _get_local_task_prompt(mode=mode, task_profile=task_profile)
                 messages.append(
                     {
                         "role": "user",
@@ -112,10 +117,7 @@ class LocalQwen3VLClient:
                             {"type": "image", "image": _load_pil_image(example_sample)},
                             {
                                 "type": "text",
-                                "text": (
-                                    f"{get_task_prompt(task_profile)}\n"
-                                    f"Image ID: {example_sample.image_id}"
-                                ),
+                                "text": f"{prompt_text}\nImage ID: {example_sample.image_id}",
                             },
                         ],
                     }
@@ -127,10 +129,10 @@ class LocalQwen3VLClient:
                             {
                                 "type": "text",
                                 "text": json.dumps(
-                                    build_example_prediction_set(
+                                    build_author_style_example_answer(
                                         example_sample,
                                         task_profile=task_profile,
-                                    ).to_dict(),
+                                    ),
                                     ensure_ascii=False,
                                     indent=2,
                                 ),
@@ -139,6 +141,7 @@ class LocalQwen3VLClient:
                     }
                 )
 
+        prompt_text = _get_local_task_prompt(mode=mode, task_profile=task_profile)
         messages.append(
             {
                 "role": "user",
@@ -146,9 +149,7 @@ class LocalQwen3VLClient:
                     {"type": "image", "image": _load_pil_image(target_sample)},
                     {
                         "type": "text",
-                        "text": (
-                            f"{get_task_prompt(task_profile)}\nImage ID: {target_sample.image_id}"
-                        ),
+                        "text": f"{prompt_text}\nImage ID: {target_sample.image_id}",
                     },
                 ],
             }
@@ -213,3 +214,9 @@ def _load_pil_image(sample: ConstructionSiteSample):
     except ImportError as exc:  # pragma: no cover - only triggered on missing local deps
         raise ImportError("Local Qwen3-VL inference requires Pillow.") from exc
     return Image.open(io.BytesIO(sample.image.bytes)).convert("RGB")
+
+
+def _get_local_task_prompt(*, mode: str, task_profile: str) -> str:
+    if mode == "five_shot":
+        return get_five_shot_task_prompt(task_profile)
+    return get_task_prompt(task_profile)

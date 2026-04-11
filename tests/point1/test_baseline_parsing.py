@@ -145,3 +145,23 @@ def test_parse_prediction_set_response_converts_pixel_bbox_to_normalized(
         0.1953125,
         0.5208333333333334,
     ]
+
+
+def test_parse_prediction_set_response_handles_author_style_payload() -> None:
+    """Author-style five-shot outputs should be adapted back to four rule predictions."""
+    response = """
+    {
+      "image_id": "0000424",
+      "violated_rule_ids": [1, 3],
+      "explanation": "Worker missing hard hat near an unprotected edge.",
+      "target_bbox": [0.1, 0.2, 0.3, 0.4]
+    }
+    """
+
+    prediction_set = parse_prediction_set_response(response)
+
+    assert len(prediction_set.predictions) == 4
+    assert prediction_set.predictions[0].decision_state == "violation"
+    assert prediction_set.predictions[1].decision_state == "no_violation"
+    assert prediction_set.predictions[2].decision_state == "violation"
+    assert prediction_set.predictions[0].target_bbox is not None

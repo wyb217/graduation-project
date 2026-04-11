@@ -19,7 +19,12 @@ def parse_prediction_set_response(
 ) -> Point1ImagePredictionSet:
     """Parse one raw model response into a validated structured prediction set."""
     payload = _load_json_payload(response_text)
-    predictions = tuple(_parse_prediction(item, sample=sample) for item in payload["predictions"])
+    if "predictions" in payload:
+        predictions = tuple(
+            _parse_prediction(item, sample=sample) for item in payload["predictions"]
+        )
+    else:
+        predictions = _parse_author_style_payload(payload, sample=sample)
     if len(predictions) != 4:
         raise ValueError(f"Expected 4 predictions, got {len(predictions)}.")
     return Point1ImagePredictionSet(image_id=str(payload["image_id"]), predictions=predictions)
@@ -92,3 +97,31 @@ def _try_normalize_pixel_bbox(
         values[2] / width,
         values[3] / height,
     ]
+
+
+def _parse_author_style_payload(
+    payload: dict[str, Any],
+    *,
+    sample: ConstructionSiteSample | None,
+) -> tuple[Point1Prediction, ...]:
+    violated_rule_ids = {int(rule_id) for rule_id in payload.get("violated_rule_ids", [])}
+    explanation = str(payload.get("explanation", "")).strip()
+    raw_bbox = payload.get("target_bbox")
+    bbox = None if raw_bbox is None else _parse_bbox(raw_bbox, sample=sample)
+    predictions: list[Point1Prediction] = []
+    for rule_id in range(1, 5):
+        is_violated = rule_id in violated_rule_ids
+        predictions.append(
+            Point1Prediction(
+                rule_id=rule_id,
+                decision_state="violation" if is_violated else "no_violation",
+                target_bbox=bbox if is_violated else None,
+                supporting_evidence_ids=(),
+                counter_evidence_ids=(),
+                unknown_items=(),
+                reason_slots={},
+                reason_text=explanation if is_violated else "",
+                confidence=float(payload.get("confidence", 1.0 if violated_rule_ids else 0.0)),
+            )
+        )
+    return tuple(predictions)
