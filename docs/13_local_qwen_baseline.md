@@ -69,7 +69,65 @@ python scripts/run_point1_local_qwen_baseline.py \
   --output artifacts/point1/direct-localqwen-balanced_test_13x5.json
 ```
 
-## 运行 5-shot baseline
+## 推荐运行顺序
+
+建议按下面顺序跑：
+
+1. `direct + classification_only`
+2. `5-shot + classification_only`
+3. `direct + structured`
+4. `5-shot + structured`
+
+这样可以先判断模型本身的分类能力，再看 bbox / structured 输出是否拖后腿。
+
+## 四组标准命令
+
+### 1. direct + classification_only
+
+```bash
+conda activate graduation-project
+python scripts/run_point1_local_qwen_baseline.py \
+  --model-path /home/bml/storage/qwen3_models \
+  --mode direct \
+  --task-profile classification_only \
+  --target-parquet test.parquet \
+  --target-registry src/benchmark/splits/constructionsite10k_balanced_test_13x5.json \
+  --target-split balanced_test_13x5 \
+  --output artifacts/point1/directcls-localqwen-balanced_test_13x5.json
+```
+
+### 2. 5-shot + classification_only
+
+```bash
+conda activate graduation-project
+python scripts/run_point1_local_qwen_baseline.py \
+  --model-path /home/bml/storage/qwen3_models \
+  --mode five_shot \
+  --task-profile classification_only \
+  --target-parquet test.parquet \
+  --target-registry src/benchmark/splits/constructionsite10k_balanced_test_13x5.json \
+  --target-split balanced_test_13x5 \
+  --few-shot-parquet train-00001-of-00002.parquet train-00002-of-00002.parquet \
+  --few-shot-registry src/benchmark/splits/constructionsite10k_balanced_dev_15x5.json \
+  --few-shot-split balanced_dev_15x5 \
+  --output artifacts/point1/fiveshotcls-localqwen-balanced_test_13x5.json
+```
+
+### 3. direct + structured
+
+```bash
+conda activate graduation-project
+python scripts/run_point1_local_qwen_baseline.py \
+  --model-path /home/bml/storage/qwen3_models \
+  --mode direct \
+  --task-profile structured \
+  --target-parquet test.parquet \
+  --target-registry src/benchmark/splits/constructionsite10k_balanced_test_13x5.json \
+  --target-split balanced_test_13x5 \
+  --output artifacts/point1/direct-localqwen-balanced_test_13x5.json
+```
+
+### 4. 5-shot + structured
 
 ```bash
 conda activate graduation-project
@@ -86,12 +144,12 @@ python scripts/run_point1_local_qwen_baseline.py \
   --output artifacts/point1/fiveshot-localqwen-balanced_test_13x5.json
 ```
 
-## 只做分类，不输出 bbox
+## 只跑少量样本做 smoke test
 
-如果你想先看纯规则识别，而不让 bbox 影响解析稳定性：
+如果你想先快速测试，只要给命令额外加：
 
 ```bash
---task-profile classification_only
+--limit 5
 ```
 
 例如：
@@ -104,7 +162,8 @@ python scripts/run_point1_local_qwen_baseline.py \
   --target-parquet test.parquet \
   --target-registry src/benchmark/splits/constructionsite10k_balanced_test_13x5.json \
   --target-split balanced_test_13x5 \
-  --output artifacts/point1/directcls-localqwen-balanced_test_13x5.json
+  --limit 5 \
+  --output artifacts/point1/directcls-localqwen-limit5.json
 ```
 
 ## 输出文件
@@ -126,6 +185,30 @@ python scripts/run_point1_local_qwen_baseline.py \
 - `num_failures`
 - `mode`
 - `task_profile`
+
+## 跑完后的结果分析
+
+如果你已经跑完一对结果，例如：
+
+- `directcls-localqwen-balanced_test_13x5.json`
+- `fiveshotcls-localqwen-balanced_test_13x5.json`
+
+可以直接运行：
+
+```bash
+conda activate graduation-project
+python scripts/analyze_point1_baselines.py \
+  --direct-output artifacts/point1/directcls-localqwen-balanced_test_13x5.json \
+  --few-shot-output artifacts/point1/fiveshotcls-localqwen-balanced_test_13x5.json \
+  --registry src/benchmark/splits/constructionsite10k_balanced_test_13x5.json \
+  --subset-name balanced_test_13x5 \
+  --output artifacts/point1/localqwen-cls-comparison.json
+```
+
+如果分析 structured 两组，就把输入文件改成：
+
+- `direct-localqwen-balanced_test_13x5.json`
+- `fiveshot-localqwen-balanced_test_13x5.json`
 
 ## 说明
 
