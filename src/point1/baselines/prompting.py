@@ -173,7 +173,7 @@ def _build_user_message(sample: ConstructionSiteSample, *, task_profile: str) ->
     if sample.image is None or sample.image.bytes is None:
         raise ValueError(f"Sample {sample.image_id} does not contain embedded image bytes.")
     image_base64 = base64.b64encode(sample.image.bytes).decode("utf-8")
-    task_prompt = _get_task_prompt(task_profile)
+    task_prompt = get_task_prompt(task_profile)
     return {
         "role": "user",
         "content": [
@@ -183,7 +183,7 @@ def _build_user_message(sample: ConstructionSiteSample, *, task_profile: str) ->
     }
 
 
-def _get_task_prompt(task_profile: str) -> str:
+def get_task_prompt(task_profile: str) -> str:
     if task_profile == "structured":
         return STRUCTURED_TASK_PROMPT
     if task_profile == "classification_only":

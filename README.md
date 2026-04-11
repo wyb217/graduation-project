@@ -229,6 +229,47 @@ python scripts/run_point1_api_baseline.py \
   --output artifacts/point1/fiveshot-modelscope-balanced_test_13x5.json
 ```
 
+## 本地模型 baseline（Qwen3-VL-8B-Instruct）
+
+如果你在自己的服务器上下载了本地模型，可以不走外部 API，直接运行：
+
+### direct
+
+```bash
+conda activate graduation-project
+python scripts/run_point1_local_qwen_baseline.py \
+  --model-path /path/to/Qwen3-VL-8B-Instruct \
+  --mode direct \
+  --task-profile structured \
+  --target-parquet test.parquet \
+  --target-registry src/benchmark/splits/constructionsite10k_balanced_test_13x5.json \
+  --target-split balanced_test_13x5 \
+  --output artifacts/point1/direct-localqwen-balanced_test_13x5.json
+```
+
+### 5-shot
+
+```bash
+conda activate graduation-project
+python scripts/run_point1_local_qwen_baseline.py \
+  --model-path /path/to/Qwen3-VL-8B-Instruct \
+  --mode five_shot \
+  --task-profile structured \
+  --target-parquet test.parquet \
+  --target-registry src/benchmark/splits/constructionsite10k_balanced_test_13x5.json \
+  --target-split balanced_test_13x5 \
+  --few-shot-parquet train-00001-of-00002.parquet train-00002-of-00002.parquet \
+  --few-shot-registry src/benchmark/splits/constructionsite10k_balanced_dev_15x5.json \
+  --few-shot-split balanced_dev_15x5 \
+  --output artifacts/point1/fiveshot-localqwen-balanced_test_13x5.json
+```
+
+如果你想先只看纯分类能力，不输出 bbox：
+
+```bash
+--task-profile classification_only
+```
+
 更多实现状态见：
 
 - `docs/superpowers/specs/2026-04-10-point1-foundation-design.md`
@@ -236,3 +277,4 @@ python scripts/run_point1_api_baseline.py \
 - `docs/09_point1_foundation_status.md`
 - `docs/11_beginner_workflow.md`
 - `docs/12_point1_api_baseline.md`
+- `docs/13_local_qwen_baseline.md`
