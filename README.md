@@ -151,9 +151,9 @@ dataset = ConstructionSite10kDataset.from_parquet(
 
 ## 当前里程碑后的下一步
 
-1. Point 1 baseline 接口
-2. official bridge wrapper
-3. Rule 1 evidence -> executor -> explanation 路径
+1. official eval bridge wrapper
+2. Rule 1 evidence -> executor -> explanation 路径
+3. Rule 4 pair reasoning
 
 ## 快速测试子集
 
@@ -228,6 +228,25 @@ python scripts/run_point1_api_baseline.py \
   --few-shot-split balanced_dev_15x5 \
   --output artifacts/point1/fiveshot-modelscope-balanced_test_13x5.json
 ```
+
+## official eval bridge
+
+如果你已经有 Point 1 baseline 输出文件，可以把它导出成 ConstructionSite10k 官方风格预测格式：
+
+```bash
+conda activate graduation-project
+python scripts/run_point1_eval.py \
+  --baseline-output artifacts/point1/fiveshot-modelscope-balanced_test_13x5.json \
+  --official-output artifacts/point1/fiveshot-modelscope-balanced_test_13x5.official.json \
+  --registry src/benchmark/splits/constructionsite10k_balanced_test_13x5.json \
+  --subset-name balanced_test_13x5 \
+  --summary-output artifacts/point1/fiveshot-modelscope-balanced_test_13x5.eval-summary.json
+```
+
+这个脚本会：
+
+- 导出官方风格预测文件，便于后续对接官方评测仓库；
+- 可选生成当前仓库内部 summary，先看 parse success、Macro-F1 和 bucket hit rate。
 
 ## 本地模型 baseline（Qwen3-VL-8B-Instruct）
 
