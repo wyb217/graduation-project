@@ -16,12 +16,28 @@
 10. 冻结的 `balanced_15x5` 快速测试子集。
 11. conda-first 环境说明与初学者友好的开发脚本。
 12. Point 1 API baseline（direct / 5-shot）骨架与 provider 配置入口。
+13. Rule 1 轻量真实视觉主链路（person candidate -> PPE predicates -> executor -> explanation）。
 
 ## 当前代码边界
 
 - Point 1 仍未接入任何 VLM、外部 API、RAG、LoRA、QLoRA；
 - Point 2 仅保留目录边界，不含实现；
 - Point 3 仅保留系统层占位目录。
+
+## Rule 1 当前状态
+
+当前仓库已经增加 Rule 1 的第一条方法链路：
+
+- person candidate generation
+- Rule 1 predicate extraction
+- Rule 1 executor
+- Rule 1 explanation mapping
+
+当前实现定位：
+
+- 不是最终论文精度版本；
+- 但已经具备真实视觉输入、明确模块边界与单元测试；
+- 可作为后续 Rule 1 专项实验和 executor 扩展的起点。
 
 ## parquet 数据支持
 
@@ -47,6 +63,11 @@
 - `src/benchmark/splits/constructionsite10k_balanced_dev_15x5.json`
 - `src/benchmark/splits/constructionsite10k_balanced_test_13x5.json`
 - `src/point1/baselines/`
+- `src/point1/candidates/`
+- `src/point1/predicates/`
+- `src/point1/executor/`
+- `src/point1/explanation/`
+- `src/point1/pipelines/rule1.py`
 - `scripts/run_point1_api_baseline.py`
 - `configs/system/providers.example.json`
 
@@ -66,7 +87,7 @@
 
 ## 下一阶段建议
 
-1. 增加 Point 1 baseline 接口与结构化 JSON parser；
-2. 增加 official evaluation bridge wrapper；
-3. 先实现 Rule 1 的 candidate / predicate / executor 主链路；
-4. 再进入 Rule 4 pair reasoning 与 edge-related modules。
+1. 用 smoke/subset 结果验证 Rule 1 主链路输出稳定性；
+2. 增加 Rule 1 image-level aggregation 与最小评测闭环；
+3. 再进入 Rule 4 pair reasoning 与 edge-related modules；
+4. 继续补强 stratified metrics、error analysis 与 failure export。

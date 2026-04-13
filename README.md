@@ -328,6 +328,32 @@ python scripts/analyze_point1_baselines.py \
 - `author_train_mimic` few-shot 示例固定来自 **train**，避免把 test 图像直接当作
   in-context example，尽量保持 benchmark 口径正确。
 
+## Rule 1 主链路（轻量真实视觉）
+
+仓库现在包含 Point 1 的第一条方法链路：
+
+- `point1.candidates`：person candidate generation
+- `point1.predicates.rule1`：Rule 1 PPE predicates
+- `point1.executor.rule1`：Rule 1 decision executor
+- `point1.pipelines.rule1`：`candidate -> predicate -> executor -> explanation`
+
+当前实现使用：
+
+- OpenCV HOG people detector 生成人框
+- 基于 crop 的轻量 PPE heuristic 判别
+
+这条链路当前主要用于：
+
+- 主方法骨架搭建
+- smoke test
+- Rule 1 单规则方法验证
+
+如果你要在新环境里运行 Rule 1 真实视觉链路，确保已经安装：
+
+```bash
+pip install -e .
+```
+
 更多实现状态见：
 
 - `docs/superpowers/specs/2026-04-10-point1-foundation-design.md`
