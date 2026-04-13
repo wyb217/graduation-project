@@ -209,3 +209,62 @@ def test_parse_prediction_set_response_handles_author_sparse_no_violation_payloa
     assert all(
         prediction.decision_state == "no_violation" for prediction in prediction_set.predictions
     )
+
+
+def test_parse_prediction_set_response_uses_sample_image_id_for_sparse_author_payload(
+    sample_annotation: dict[str, object],
+) -> None:
+    """Sparse author payloads should fall back to the current sample image_id."""
+    sample = parse_sample(
+        {
+            **sample_annotation,
+            "image_id": "target-1",
+            "image": {"bytes": b"target-image", "path": "target.jpg"},
+        }
+    )
+    response = """
+    {
+      "0": "No violations"
+    }
+    """
+
+    prediction_set = parse_prediction_set_response(response, sample=sample)
+
+    assert prediction_set.image_id == "target-1"
+    assert all(
+        prediction.decision_state == "no_violation"
+        for prediction in prediction_set.predictions
+    )
+
+
+def test_parse_prediction_set_response_treats_negative_sparse_reasons_as_no_violation(
+) -> None:
+    """Sparse author responses with explicit negative reasons should stay negative."""
+    response = """
+    {
+      "image_id": "0000002",
+      "1": {
+        "reason": "Workers are wearing hard hats and no violations of PPE are visible.",
+        "bounding_box": null
+      },
+      "2": {
+        "reason": "No workers are visible working at height, so the rule does not apply.",
+        "bounding_box": null
+      },
+      "3": {
+        "reason": "No underground project edge is visible here.",
+        "bounding_box": null
+      },
+      "4": {
+        "reason": "No workers are in the excavator operating radius.",
+        "bounding_box": null
+      }
+    }
+    """
+
+    prediction_set = parse_prediction_set_response(response)
+
+    assert all(
+        prediction.decision_state == "no_violation"
+        for prediction in prediction_set.predictions
+    )
