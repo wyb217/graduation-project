@@ -128,6 +128,104 @@ Requirements:
 """.strip()
 
 
+AUTHOR_VQA_SYSTEM_PROMPT = """
+You are a construction site safety inspector.
+You are responsible for viewing the given image and give helpful,
+detailed, and polite answers to your supervisor.
+You only answer questions that are asked by the supervisor and in the
+exact way as requested.
+""".strip()
+
+
+AUTHOR_VQA_FEW_SHOT_PREAMBLE = """
+You will be asked to read the image and identify violations of safety
+rules that appears in the image.
+You also need to provide a short reasoning and bounding boxs showing the
+location of the violation.
+
+I will give you five examples to show you how your answer should be
+formatted and what your reasoning should include.
+""".strip()
+
+
+AUTHOR_VQA_STRUCTURED_PROMPT = """
+Please read the image and identify if there are violations of the
+following four safety rules in the image.
+Do not include violations that do not exist in your answer.
+Assume no violation if the visual information is not enough to make a
+judgement:
+
+1. Use of basic PPE when on foot at construction sites. Machine
+operators do not need PPE. (hard hats, properly worn clothes covering
+shoulders and legs, shoes that can cover toes, high-visibility
+retroreflective vests at night, face shield or safety glasses when
+cutting, welding, grinding, or drilling).
+
+2. Use of safety harness when working from a height of three meters and
+the edges are without any edge protection.
+
+3. Adoption of edge protection or edge warning including guardrails,
+fences, for underground projects three meters in depth with steep
+retaining wall and for human to stand.
+
+4. Appearance of worker in the blind spots of the operator and within
+the operation radius of excavators in operation, or excavators with
+operators inside.
+
+Your answer should be in the format of:
+{"id of the safety rule": {"reason": one or two sentences explaining who
+violate the rule in the image and the specific reason, "bounding_box":
+[the location of violation in the image x_min, y_min, x_max, y_max in
+0-1 normalized space]}}.
+
+Return {"0": "No violations"} if you find no violation in the image.
+""".strip()
+
+
+AUTHOR_VQA_CLASSIFICATION_PROMPT = """
+Please read the image and identify if there are violations of the
+following four safety rules in the image.
+Do not include violations that do not exist in your answer.
+Assume no violation if the visual information is not enough to make a
+judgement:
+
+1. Use of basic PPE when on foot at construction sites. Machine
+operators do not need PPE. (hard hats, properly worn clothes covering
+shoulders and legs, shoes that can cover toes, high-visibility
+retroreflective vests at night, face shield or safety glasses when
+cutting, welding, grinding, or drilling).
+
+2. Use of safety harness when working from a height of three meters and
+the edges are without any edge protection.
+
+3. Adoption of edge protection or edge warning including guardrails,
+fences, for underground projects three meters in depth with steep
+retaining wall and for human to stand.
+
+4. Appearance of worker in the blind spots of the operator and within
+the operation radius of excavators in operation, or excavators with
+operators inside.
+
+This run is classification-only.
+Always set "bounding_box" to null whenever you report a violation.
+Your answer should be in the format of:
+{"id of the safety rule": {"reason": one or two sentences explaining who
+violate the rule in the image and the specific reason, "bounding_box":
+null}}.
+
+Return {"0": "No violations"} if you find no violation in the image.
+""".strip()
+
+
+AUTHOR_TRAIN_MIMIC_FIVE_SHOT_IDS = (
+    "0004852",  # clean
+    "0005167",  # rule1 + rule3
+    "0004858",  # rule1
+    "0004850",  # rule4
+    "0005509",  # rule1 + rule2
+)
+
+
 def build_example_prediction_set(
     sample: ConstructionSiteSample,
     *,
@@ -189,44 +287,95 @@ def select_default_five_shot_ids(
     )
 
 
+def select_five_shot_ids(
+    registry: SplitRegistry | None,
+    *,
+    subset_name: str = "balanced_dev_15x5",
+    example_profile: str = "balanced_single_rule",
+    explicit_image_ids: tuple[str, ...] = (),
+) -> tuple[str, ...]:
+    """Select stable few-shot example IDs for the requested profile."""
+    if explicit_image_ids:
+        return explicit_image_ids
+    if example_profile == "balanced_single_rule":
+        if registry is None:
+            raise ValueError("balanced_single_rule examples require a split registry.")
+        return select_default_five_shot_ids(registry, subset_name=subset_name)
+    if example_profile == "author_train_mimic":
+        return AUTHOR_TRAIN_MIMIC_FIVE_SHOT_IDS
+    raise ValueError(f"Unknown example_profile: {example_profile}")
+
+
 def build_inference_messages(
     *,
     target_sample: ConstructionSiteSample,
     mode: str,
     example_samples: tuple[ConstructionSiteSample, ...],
     task_profile: str = "structured",
+    prompt_style: str = "default",
 ) -> list[dict[str, object]]:
     """Build the multimodal message list for one target image."""
-    messages: list[dict[str, object]] = [{"role": "system", "content": SYSTEM_PROMPT}]
+    messages: list[dict[str, object]] = [
+        {"role": "system", "content": get_system_prompt(prompt_style)}
+    ]
     if mode == "five_shot":
+        if prompt_style == "author_vqa":
+            messages.append(
+                {
+                    "role": "user",
+                    "content": AUTHOR_VQA_FEW_SHOT_PREAMBLE,
+                }
+            )
         for example_sample in example_samples:
             messages.append(
-                _build_five_shot_user_message(example_sample, task_profile=task_profile)
+                _build_five_shot_user_message(
+                    example_sample,
+                    task_profile=task_profile,
+                    prompt_style=prompt_style,
+                )
             )
             messages.append(
                 {
                     "role": "assistant",
                     "content": json.dumps(
-                        build_author_style_example_answer(
+                        build_example_answer(
                             example_sample,
                             task_profile=task_profile,
+                            prompt_style=prompt_style,
                         ),
                         ensure_ascii=False,
                         indent=2,
                     ),
                 }
             )
-        messages.append(_build_five_shot_user_message(target_sample, task_profile=task_profile))
+        messages.append(
+            _build_five_shot_user_message(
+                target_sample,
+                task_profile=task_profile,
+                prompt_style=prompt_style,
+            )
+        )
         return messages
-    messages.append(_build_user_message(target_sample, task_profile=task_profile))
+    messages.append(
+        _build_user_message(
+            target_sample,
+            task_profile=task_profile,
+            prompt_style=prompt_style,
+        )
+    )
     return messages
 
 
-def _build_user_message(sample: ConstructionSiteSample, *, task_profile: str) -> dict[str, object]:
+def _build_user_message(
+    sample: ConstructionSiteSample,
+    *,
+    task_profile: str,
+    prompt_style: str,
+) -> dict[str, object]:
     if sample.image is None or sample.image.bytes is None:
         raise ValueError(f"Sample {sample.image_id} does not contain embedded image bytes.")
     image_base64 = base64.b64encode(sample.image.bytes).decode("utf-8")
-    task_prompt = get_task_prompt(task_profile)
+    task_prompt = get_task_prompt(task_profile, prompt_style=prompt_style)
     return {
         "role": "user",
         "content": [
@@ -240,11 +389,12 @@ def _build_five_shot_user_message(
     sample: ConstructionSiteSample,
     *,
     task_profile: str,
+    prompt_style: str,
 ) -> dict[str, object]:
     if sample.image is None or sample.image.bytes is None:
         raise ValueError(f"Sample {sample.image_id} does not contain embedded image bytes.")
     image_base64 = base64.b64encode(sample.image.bytes).decode("utf-8")
-    task_prompt = get_five_shot_task_prompt(task_profile)
+    task_prompt = get_five_shot_task_prompt(task_profile, prompt_style=prompt_style)
     return {
         "role": "user",
         "content": [
@@ -254,7 +404,23 @@ def _build_five_shot_user_message(
     }
 
 
-def get_task_prompt(task_profile: str) -> str:
+def get_system_prompt(prompt_style: str) -> str:
+    """Return the system prompt for the selected prompt style."""
+    if prompt_style == "default":
+        return SYSTEM_PROMPT
+    if prompt_style == "author_vqa":
+        return AUTHOR_VQA_SYSTEM_PROMPT
+    raise ValueError(f"Unknown prompt_style: {prompt_style}")
+
+
+def get_task_prompt(task_profile: str, *, prompt_style: str = "default") -> str:
+    """Return the direct-prompt task instruction for the selected prompt style."""
+    if prompt_style == "author_vqa":
+        if task_profile == "structured":
+            return AUTHOR_VQA_STRUCTURED_PROMPT
+        if task_profile == "classification_only":
+            return AUTHOR_VQA_CLASSIFICATION_PROMPT
+        raise ValueError(f"Unknown task_profile: {task_profile}")
     if task_profile == "structured":
         return STRUCTURED_TASK_PROMPT
     if task_profile == "classification_only":
@@ -262,8 +428,10 @@ def get_task_prompt(task_profile: str) -> str:
     raise ValueError(f"Unknown task_profile: {task_profile}")
 
 
-def get_five_shot_task_prompt(task_profile: str) -> str:
-    """Return the author-style prompt used for five-shot VQA."""
+def get_five_shot_task_prompt(task_profile: str, *, prompt_style: str = "default") -> str:
+    """Return the task prompt used for five-shot VQA."""
+    if prompt_style == "author_vqa":
+        return get_task_prompt(task_profile, prompt_style=prompt_style)
     if task_profile == "structured":
         return AUTHOR_STYLE_FIVE_SHOT_STRUCTURED_PROMPT
     if task_profile == "classification_only":
@@ -300,3 +468,38 @@ def build_author_style_example_answer(
         "explanation": explanation,
         "target_bbox": target_bbox,
     }
+
+
+def build_author_vqa_example_answer(
+    sample: ConstructionSiteSample,
+    *,
+    task_profile: str,
+) -> dict[str, object]:
+    """Build a sparse rule dictionary answer matching the official author prompt style."""
+    answer: dict[str, object] = {"image_id": sample.image_id}
+    for rule_id, violation in sorted(sample.violations.items()):
+        if violation is None:
+            continue
+        answer[str(rule_id)] = {
+            "reason": violation.reason,
+            "bounding_box": (
+                violation.bounding_boxes[0].to_list()
+                if task_profile == "structured" and violation.bounding_boxes
+                else None
+            ),
+        }
+    if len(answer) == 1:
+        answer["0"] = "No violations"
+    return answer
+
+
+def build_example_answer(
+    sample: ConstructionSiteSample,
+    *,
+    task_profile: str,
+    prompt_style: str,
+) -> dict[str, object]:
+    """Build the example answer matching the selected prompt style."""
+    if prompt_style == "author_vqa":
+        return build_author_vqa_example_answer(sample, task_profile=task_profile)
+    return build_author_style_example_answer(sample, task_profile=task_profile)

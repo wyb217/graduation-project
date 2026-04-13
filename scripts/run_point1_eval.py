@@ -8,7 +8,10 @@ from pathlib import Path
 
 from common.io.json_io import read_json, write_json
 from eval.bridges import export_baseline_payload_to_official_predictions
-from eval.reports.point1_baseline_summary import summarize_baseline_run
+from eval.reports.point1_baseline_summary import (
+    summarize_baseline_run,
+    summarize_baseline_run_from_dataset,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -18,6 +21,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--official-output", type=Path, required=True)
     parser.add_argument("--registry", type=Path, default=None)
     parser.add_argument("--subset-name", default=None)
+    parser.add_argument("--target-parquet", nargs="+", type=Path, default=None)
+    parser.add_argument("--target-registry", type=Path, default=None)
+    parser.add_argument("--target-split", default=None)
     parser.add_argument("--summary-output", type=Path, default=None)
     return parser
 
@@ -34,17 +40,29 @@ def main() -> None:
 
     if args.summary_output is None:
         return
-    if args.registry is None or args.subset_name is None:
-        raise ValueError("--summary-output requires both --registry and --subset-name.")
-
-    summary = summarize_baseline_run(
-        output_path=args.baseline_output,
-        registry_path=args.registry,
-        subset_name=args.subset_name,
-    )
+    if args.target_parquet is not None:
+        summary = summarize_baseline_run_from_dataset(
+            output_path=args.baseline_output,
+            target_parquet_paths=tuple(args.target_parquet),
+            registry_path=args.target_registry,
+            split_name=args.target_split,
+        )
+    else:
+        if args.registry is None or args.subset_name is None:
+            raise ValueError(
+                "--summary-output requires either --target-parquet "
+                "or both --registry and --subset-name."
+            )
+        summary = summarize_baseline_run(
+            output_path=args.baseline_output,
+            registry_path=args.registry,
+            subset_name=args.subset_name,
+        )
     args.summary_output.parent.mkdir(parents=True, exist_ok=True)
     write_json(args.summary_output, summary)
     print(json.dumps({"summary_output": str(args.summary_output)}, ensure_ascii=False, indent=2))
+    if "rule_table_markdown" in summary:
+        print(summary["rule_table_markdown"])
 
 
 if __name__ == "__main__":

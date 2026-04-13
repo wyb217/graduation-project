@@ -9,6 +9,7 @@ from point1.baselines.prompting import (
     build_example_prediction_set,
     build_inference_messages,
     select_default_five_shot_ids,
+    select_five_shot_ids,
 )
 
 
@@ -129,3 +130,38 @@ def test_build_author_style_example_answer_aggregates_rule_ids(
 
     assert answer["violated_rule_ids"] == [1, 2]
     assert answer["target_bbox"] == [0.22, 0.59, 0.28, 0.75]
+
+
+def test_build_inference_messages_supports_author_vqa_prompt_style(
+    sample_annotation: dict[str, object],
+) -> None:
+    """Author-VQA prompt style should use the sparse rule dictionary format."""
+    target_sample = parse_sample(
+        {
+            **sample_annotation,
+            "image_id": "target",
+            "image": {"bytes": b"target-image", "path": "target.jpg"},
+        }
+    )
+
+    messages = build_inference_messages(
+        target_sample=target_sample,
+        mode="direct",
+        example_samples=(),
+        task_profile="structured",
+        prompt_style="author_vqa",
+    )
+
+    text_block = messages[-1]["content"][0]["text"]
+    assert 'Return {"0": "No violations"}' in text_block
+    assert '"id of the safety rule"' in text_block
+
+
+def test_select_five_shot_ids_supports_author_train_mimic_profile() -> None:
+    """Author-train-mimic profile should return the fixed non-test few-shot examples."""
+    shot_ids = select_five_shot_ids(
+        registry=None,
+        example_profile="author_train_mimic",
+    )
+
+    assert shot_ids == ("0004852", "0005167", "0004858", "0004850", "0005509")

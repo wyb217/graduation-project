@@ -11,8 +11,10 @@ from benchmark.constructionsite10k.types import ConstructionSiteSample
 from common.schemas.point1 import Point1BaselineRecord
 from point1.baselines.parsing import parse_prediction_set_response
 from point1.baselines.prompting import (
-    build_author_style_example_answer,
+    AUTHOR_VQA_FEW_SHOT_PREAMBLE,
+    build_example_answer,
     get_five_shot_task_prompt,
+    get_system_prompt,
     get_task_prompt,
 )
 
@@ -42,6 +44,7 @@ class LocalQwen3VLClient:
         mode: str,
         example_samples: tuple[ConstructionSiteSample, ...],
         task_profile: str,
+        prompt_style: str = "default",
     ) -> str:
         """Run one local Qwen3-VL generation and return the raw text output."""
         self._ensure_loaded()
@@ -50,6 +53,7 @@ class LocalQwen3VLClient:
             mode=mode,
             example_samples=example_samples,
             task_profile=task_profile,
+            prompt_style=prompt_style,
         )
         inputs = self._processor.apply_chat_template(
             messages,
@@ -105,11 +109,28 @@ class LocalQwen3VLClient:
         mode: str,
         example_samples: tuple[ConstructionSiteSample, ...],
         task_profile: str,
+        prompt_style: str = "default",
     ) -> list[dict[str, Any]]:
-        messages: list[dict[str, Any]] = []
+        messages: list[dict[str, Any]] = [
+            {
+                "role": "system",
+                "content": get_system_prompt(prompt_style),
+            }
+        ]
         if mode == "five_shot":
+            if prompt_style == "author_vqa":
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": [{"type": "text", "text": AUTHOR_VQA_FEW_SHOT_PREAMBLE}],
+                    }
+                )
             for example_sample in example_samples:
-                prompt_text = _get_local_task_prompt(mode=mode, task_profile=task_profile)
+                prompt_text = _get_local_task_prompt(
+                    mode=mode,
+                    task_profile=task_profile,
+                    prompt_style=prompt_style,
+                )
                 messages.append(
                     {
                         "role": "user",
@@ -129,9 +150,10 @@ class LocalQwen3VLClient:
                             {
                                 "type": "text",
                                 "text": json.dumps(
-                                    build_author_style_example_answer(
+                                    build_example_answer(
                                         example_sample,
                                         task_profile=task_profile,
+                                        prompt_style=prompt_style,
                                     ),
                                     ensure_ascii=False,
                                     indent=2,
@@ -141,7 +163,11 @@ class LocalQwen3VLClient:
                     }
                 )
 
-        prompt_text = _get_local_task_prompt(mode=mode, task_profile=task_profile)
+        prompt_text = _get_local_task_prompt(
+            mode=mode,
+            task_profile=task_profile,
+            prompt_style=prompt_style,
+        )
         messages.append(
             {
                 "role": "user",
@@ -166,6 +192,7 @@ def run_local_qwen_baseline(
     example_samples: tuple[ConstructionSiteSample, ...],
     task_profile: str,
     show_progress: bool = False,
+    prompt_style: str = "default",
 ) -> list[Point1BaselineRecord]:
     """Run a local Qwen3-VL baseline over a sequence of target samples."""
     records: list[Point1BaselineRecord] = []
@@ -179,6 +206,7 @@ def run_local_qwen_baseline(
                 mode=mode,
                 example_samples=example_samples,
                 task_profile=task_profile,
+                prompt_style=prompt_style,
             )
             parsed_output = parse_prediction_set_response(raw_response, sample=target_sample)
             records.append(
@@ -216,7 +244,7 @@ def _load_pil_image(sample: ConstructionSiteSample):
     return Image.open(io.BytesIO(sample.image.bytes)).convert("RGB")
 
 
-def _get_local_task_prompt(*, mode: str, task_profile: str) -> str:
+def _get_local_task_prompt(*, mode: str, task_profile: str, prompt_style: str = "default") -> str:
     if mode == "five_shot":
-        return get_five_shot_task_prompt(task_profile)
-    return get_task_prompt(task_profile)
+        return get_five_shot_task_prompt(task_profile, prompt_style=prompt_style)
+    return get_task_prompt(task_profile, prompt_style=prompt_style)

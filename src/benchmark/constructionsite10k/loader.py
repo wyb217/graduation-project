@@ -47,12 +47,20 @@ class ConstructionSite10kDataset:
         registry: SplitRegistry | None = None,
         split_name: str | None = None,
         include_image_bytes: bool = False,
+        image_ids: Iterable[str] | None = None,
     ) -> ConstructionSite10kDataset:
         """Load samples from one or more parquet shards."""
         shard_paths = _normalize_paths(paths)
+        image_id_filter = (
+            None if image_ids is None else tuple(str(image_id) for image_id in image_ids)
+        )
         samples = []
         for path in shard_paths:
-            table = pq.read_table(path)
+            table = (
+                pq.read_table(path)
+                if image_id_filter is None
+                else pq.read_table(path, filters=[("image_id", "in", list(image_id_filter))])
+            )
             samples.extend(
                 parse_sample(record, include_image_bytes=include_image_bytes)
                 for record in table.to_pylist()

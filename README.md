@@ -289,6 +289,45 @@ python scripts/run_point1_local_qwen_baseline.py \
 --task-profile classification_only
 ```
 
+### author-style 全测试集口径
+
+如果你要补作者风格的 direct / 5-shot，并直接在完整 `test.parquet`
+上导出分 rule precision / recall 表，可以用：
+
+```bash
+conda activate graduation-project
+python scripts/run_point1_local_qwen_baseline.py \
+  --model-path /home/bml/storage/qwen3_models \
+  --mode direct \
+  --prompt-style author_vqa \
+  --task-profile structured \
+  --target-parquet test.parquet \
+  --output artifacts/point1/direct-localqwen-authorvqa-fulltest.json
+
+python scripts/run_point1_local_qwen_baseline.py \
+  --model-path /home/bml/storage/qwen3_models \
+  --mode five_shot \
+  --prompt-style author_vqa \
+  --task-profile structured \
+  --target-parquet test.parquet \
+  --few-shot-parquet train-00001-of-00002.parquet train-00002-of-00002.parquet \
+  --few-shot-example-profile author_train_mimic \
+  --output artifacts/point1/fiveshot-localqwen-authorvqa-fulltest.json
+
+python scripts/analyze_point1_baselines.py \
+  --direct-output artifacts/point1/direct-localqwen-authorvqa-fulltest.json \
+  --few-shot-output artifacts/point1/fiveshot-localqwen-authorvqa-fulltest.json \
+  --target-parquet test.parquet \
+  --output artifacts/point1/localqwen-authorvqa-fulltest-comparison.json
+```
+
+说明：
+
+- `author_vqa` 使用更接近作者仓库的 sparse rule-dict 输出格式；
+- full test 分析时不需要 `--target-registry` / `--target-split`；
+- `author_train_mimic` few-shot 示例固定来自 **train**，避免把 test 图像直接当作
+  in-context example，尽量保持 benchmark 口径正确。
+
 更多实现状态见：
 
 - `docs/superpowers/specs/2026-04-10-point1-foundation-design.md`
