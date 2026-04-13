@@ -13,7 +13,7 @@ from point1.baselines.local_qwen import (
     LocalQwenLoadConfig,
     run_local_qwen_baseline,
 )
-from point1.baselines.prompting import select_default_five_shot_ids
+from point1.baselines.prompting import select_five_shot_ids
 
 
 def main() -> None:
@@ -39,19 +39,39 @@ def main() -> None:
         required=True,
         help="Parquet shard paths for the target split.",
     )
-    parser.add_argument("--target-registry", type=Path, required=True)
-    parser.add_argument("--target-split", required=True)
+    parser.add_argument("--target-registry", type=Path, default=None)
+    parser.add_argument("--target-split", default=None)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--limit", type=int, default=None)
+    parser.add_argument(
+        "--prompt-style",
+        choices=("default", "author_vqa"),
+        default="default",
+        help="Prompt/output style. author_vqa mimics the paper repo sparse-rule VQA format.",
+    )
     parser.add_argument("--few-shot-parquet", nargs="*", type=Path, default=[])
     parser.add_argument("--few-shot-registry", type=Path, default=None)
     parser.add_argument("--few-shot-split", default="balanced_dev_15x5")
+    parser.add_argument(
+        "--few-shot-example-profile",
+        choices=("balanced_single_rule", "author_train_mimic"),
+        default="balanced_single_rule",
+        help="Few-shot example composition profile.",
+    )
+    parser.add_argument(
+        "--few-shot-image-ids",
+        nargs="*",
+        default=[],
+        help="Optional explicit example image IDs. Overrides --few-shot-example-profile.",
+    )
     parser.add_argument("--torch-dtype", default="auto")
     parser.add_argument("--max-new-tokens", type=int, default=1200)
     parser.add_argument("--attn-implementation", default="sdpa")
     args = parser.parse_args()
 
-    target_registry = SplitRegistry.from_json(args.target_registry)
+    target_registry = (
+        SplitRegistry.from_json(args.target_registry) if args.target_registry is not None else None
+    )
     target_dataset = ConstructionSite10kDataset.from_parquet(
         args.target_parquet,
         registry=target_registry,
@@ -64,13 +84,23 @@ def main() -> None:
 
     example_samples = ()
     if args.mode == "five_shot":
-        if args.few_shot_registry is None or not args.few_shot_parquet:
-            raise ValueError("5-shot mode requires --few-shot-registry and --few-shot-parquet.")
-        few_shot_registry = SplitRegistry.from_json(args.few_shot_registry)
-        shot_ids = select_default_five_shot_ids(few_shot_registry, subset_name=args.few_shot_split)
+        if not args.few_shot_parquet:
+            raise ValueError("5-shot mode requires --few-shot-parquet.")
+        few_shot_registry = (
+            SplitRegistry.from_json(args.few_shot_registry)
+            if args.few_shot_registry is not None
+            else None
+        )
+        shot_ids = select_five_shot_ids(
+            few_shot_registry,
+            subset_name=args.few_shot_split,
+            example_profile=args.few_shot_example_profile,
+            explicit_image_ids=tuple(args.few_shot_image_ids),
+        )
         dev_dataset = ConstructionSite10kDataset.from_parquet(
             args.few_shot_parquet,
             include_image_bytes=True,
+            image_ids=shot_ids,
         )
         example_samples = tuple(dev_dataset.get_by_image_id(image_id) for image_id in shot_ids)
 
@@ -90,6 +120,7 @@ def main() -> None:
         example_samples=example_samples,
         task_profile=args.task_profile,
         show_progress=True,
+        prompt_style=args.prompt_style,
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     write_json(args.output, [record.to_dict() for record in records])
@@ -101,6 +132,7 @@ def main() -> None:
             "model_name": args.model_path,
             "mode": args.mode,
             "task_profile": args.task_profile,
+            "prompt_style": args.prompt_style,
             "target_split": args.target_split,
             "num_records": len(records),
             "num_success": sum(record.parsed_output is not None for record in records),

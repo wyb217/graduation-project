@@ -27,6 +27,7 @@
 - 5-shot prompt
 - 结构化 JSON parser
 - subset 级运行脚本
+- official-style prediction export bridge
 
 本轮不做：
 
@@ -94,3 +95,40 @@ baseline 统一返回：
 - rule4 第 1 张
 
 这样可以确保 few-shot 提示完全可复现。
+
+## 当前 few-shot 形式
+
+当前 5-shot 代码已改成更接近论文描述的 author-style VQA few-shot：
+
+- 输入 5 个图像 + 5 个标注示例
+- 示例答案使用：
+  - `violated_rule_ids`
+  - `explanation`
+  - `target_bbox`
+- 最终输出仍会被适配回本仓库统一的四规则结构化协议，便于评测
+
+## eval bridge
+
+当前仓库已经补上一个最小的 official eval bridge：
+
+- 入口脚本：`scripts/run_point1_eval.py`
+- 目标：把 baseline 输出 JSON 转成 ConstructionSite10k 官方风格预测文件
+- 额外能力：可选同时生成本仓库内部 summary
+
+示例命令：
+
+```bash
+python scripts/run_point1_eval.py \
+  --baseline-output artifacts/point1/fiveshot-modelscope-balanced_test_13x5.json \
+  --official-output artifacts/point1/fiveshot-modelscope-balanced_test_13x5.official.json \
+  --registry src/benchmark/splits/constructionsite10k_balanced_test_13x5.json \
+  --subset-name balanced_test_13x5 \
+  --summary-output artifacts/point1/fiveshot-modelscope-balanced_test_13x5.eval-summary.json
+```
+
+bridge 的导出规则：
+
+- `decision_state == "violation"` 的预测会映射到 `rule_{k}_violation`
+- `target_bbox` 会落到官方格式的 `bounding_box`
+- `reason_text` 会落到官方格式的 `reason`
+- parse 失败样本会退化成四条规则全 `null` 的官方记录，避免丢样本

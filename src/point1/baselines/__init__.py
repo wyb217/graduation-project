@@ -11,6 +11,7 @@ from point1.baselines.prompting import (
     build_example_prediction_set,
     build_inference_messages,
     select_default_five_shot_ids,
+    select_five_shot_ids,
 )
 from point1.baselines.runner import run_api_baseline
 
@@ -24,5 +25,6 @@ __all__ = [
     "load_provider_catalog",
     "parse_prediction_set_response",
     "run_api_baseline",
+    "select_five_shot_ids",
     "select_default_five_shot_ids",
 ]

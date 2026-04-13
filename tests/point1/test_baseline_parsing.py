@@ -145,3 +145,67 @@ def test_parse_prediction_set_response_converts_pixel_bbox_to_normalized(
         0.1953125,
         0.5208333333333334,
     ]
+
+
+def test_parse_prediction_set_response_handles_author_style_payload() -> None:
+    """Author-style five-shot outputs should be adapted back to four rule predictions."""
+    response = """
+    {
+      "image_id": "0000424",
+      "violated_rule_ids": [1, 3],
+      "explanation": "Worker missing hard hat near an unprotected edge.",
+      "target_bbox": [0.1, 0.2, 0.3, 0.4]
+    }
+    """
+
+    prediction_set = parse_prediction_set_response(response)
+
+    assert len(prediction_set.predictions) == 4
+    assert prediction_set.predictions[0].decision_state == "violation"
+    assert prediction_set.predictions[1].decision_state == "no_violation"
+    assert prediction_set.predictions[2].decision_state == "violation"
+    assert prediction_set.predictions[0].target_bbox is not None
+
+
+def test_parse_prediction_set_response_handles_author_sparse_rule_payload() -> None:
+    """Official-style sparse rule dictionaries should be adapted back to four predictions."""
+    response = """
+    {
+      "image_id": "0000424",
+      "1": {
+        "reason": "Worker on the left is not wearing a hard hat.",
+        "bounding_box": [0.1, 0.2, 0.3, 0.4]
+      },
+      "4": {
+        "reason": "Worker is standing in the excavator blind spot.",
+        "bounding_box": [0.5, 0.6, 0.7, 0.8]
+      }
+    }
+    """
+
+    prediction_set = parse_prediction_set_response(response)
+
+    assert len(prediction_set.predictions) == 4
+    assert prediction_set.predictions[0].decision_state == "violation"
+    assert (
+        prediction_set.predictions[0].reason_text == "Worker on the left is not wearing a hard hat."
+    )
+    assert prediction_set.predictions[3].decision_state == "violation"
+    assert prediction_set.predictions[3].target_bbox is not None
+
+
+def test_parse_prediction_set_response_handles_author_sparse_no_violation_payload() -> None:
+    """Official-style no-violation responses should map to four negative predictions."""
+    response = """
+    {
+      "image_id": "0000424",
+      "0": "No violations"
+    }
+    """
+
+    prediction_set = parse_prediction_set_response(response)
+
+    assert len(prediction_set.predictions) == 4
+    assert all(
+        prediction.decision_state == "no_violation" for prediction in prediction_set.predictions
+    )

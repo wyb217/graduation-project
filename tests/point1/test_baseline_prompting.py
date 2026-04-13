@@ -5,9 +5,11 @@ from __future__ import annotations
 from benchmark.constructionsite10k.parser import parse_sample
 from benchmark.constructionsite10k.registry import SplitRegistry
 from point1.baselines.prompting import (
+    build_author_style_example_answer,
     build_example_prediction_set,
     build_inference_messages,
     select_default_five_shot_ids,
+    select_five_shot_ids,
 )
 
 
@@ -81,6 +83,12 @@ def test_build_inference_messages_adds_five_shot_examples(
     assert messages[0]["role"] == "system"
     assert len(messages) == 12
     assert messages[-1]["role"] == "user"
+    assert "violated_rule_ids" in messages[-1]["content"][0]["text"]
+    assert (
+        "violated_rule_ids" in messages[1]["content"][0]["text"]
+        if isinstance(messages[1]["content"], list)
+        else True
+    )
 
 
 def test_build_inference_messages_supports_classification_only_profile(
@@ -104,3 +112,56 @@ def test_build_inference_messages_supports_classification_only_profile(
 
     text_block = messages[-1]["content"][0]["text"]
     assert "Always set target_bbox to null" in text_block
+
+
+def test_build_author_style_example_answer_aggregates_rule_ids(
+    sample_annotation: dict[str, object],
+) -> None:
+    """Author-style examples should aggregate violated rule IDs into one answer object."""
+    sample = parse_sample(
+        {
+            **sample_annotation,
+            "image": {"bytes": b"demo-image", "path": "0000424.jpg"},
+            "rule_2_violation": {"bounding_box": [[0.1, 0.1, 0.2, 0.2]], "reason": "rule 2"},
+        }
+    )
+
+    answer = build_author_style_example_answer(sample, task_profile="structured")
+
+    assert answer["violated_rule_ids"] == [1, 2]
+    assert answer["target_bbox"] == [0.22, 0.59, 0.28, 0.75]
+
+
+def test_build_inference_messages_supports_author_vqa_prompt_style(
+    sample_annotation: dict[str, object],
+) -> None:
+    """Author-VQA prompt style should use the sparse rule dictionary format."""
+    target_sample = parse_sample(
+        {
+            **sample_annotation,
+            "image_id": "target",
+            "image": {"bytes": b"target-image", "path": "target.jpg"},
+        }
+    )
+
+    messages = build_inference_messages(
+        target_sample=target_sample,
+        mode="direct",
+        example_samples=(),
+        task_profile="structured",
+        prompt_style="author_vqa",
+    )
+
+    text_block = messages[-1]["content"][0]["text"]
+    assert 'Return {"0": "No violations"}' in text_block
+    assert '"id of the safety rule"' in text_block
+
+
+def test_select_five_shot_ids_supports_author_train_mimic_profile() -> None:
+    """Author-train-mimic profile should return the fixed non-test few-shot examples."""
+    shot_ids = select_five_shot_ids(
+        registry=None,
+        example_profile="author_train_mimic",
+    )
+
+    assert shot_ids == ("0004852", "0005167", "0004858", "0004850", "0005509")

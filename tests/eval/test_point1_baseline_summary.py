@@ -5,8 +5,14 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pyarrow as pa
+import pyarrow.parquet as pq
+
 from common.io.json_io import write_json
-from eval.reports.point1_baseline_summary import summarize_baseline_run
+from eval.reports.point1_baseline_summary import (
+    summarize_baseline_run,
+    summarize_baseline_run_from_dataset,
+)
 
 
 def test_summarize_baseline_run_computes_parse_and_rule_metrics(tmp_path: Path) -> None:
@@ -91,3 +97,106 @@ def test_summarize_baseline_run_computes_parse_and_rule_metrics(tmp_path: Path) 
     assert summary["bucket_hit_rate"]["rule2"]["correct"] == 0
     assert summary["rule_metrics"]["1"]["tp"] == 1
     assert summary["rule_metrics"]["2"]["fp"] == 1
+
+
+def test_summarize_baseline_run_from_dataset_supports_multilabel_truth(tmp_path: Path) -> None:
+    """Dataset-backed summaries should score per-rule precision/recall on multi-label truth."""
+    dataset_path = tmp_path / "test.parquet"
+    pq.write_table(
+        pa.Table.from_pylist(
+            [
+                {
+                    "image_id": "clean-1",
+                    "image_caption": "clean",
+                    "illumination": "day",
+                    "camera_distance": "mid",
+                    "view": "front",
+                    "quality_of_info": "rich",
+                    "rule_1_violation": None,
+                    "rule_2_violation": None,
+                    "rule_3_violation": None,
+                    "rule_4_violation": None,
+                },
+                {
+                    "image_id": "rule1-1",
+                    "image_caption": "rule1",
+                    "illumination": "day",
+                    "camera_distance": "mid",
+                    "view": "front",
+                    "quality_of_info": "rich",
+                    "rule_1_violation": {"bounding_box": [[0.1, 0.2, 0.3, 0.4]], "reason": "r1"},
+                    "rule_2_violation": None,
+                    "rule_3_violation": None,
+                    "rule_4_violation": None,
+                },
+                {
+                    "image_id": "rule14-1",
+                    "image_caption": "rule14",
+                    "illumination": "day",
+                    "camera_distance": "mid",
+                    "view": "front",
+                    "quality_of_info": "rich",
+                    "rule_1_violation": {"bounding_box": [[0.1, 0.2, 0.3, 0.4]], "reason": "r1"},
+                    "rule_2_violation": None,
+                    "rule_3_violation": None,
+                    "rule_4_violation": {"bounding_box": [[0.4, 0.5, 0.6, 0.7]], "reason": "r4"},
+                },
+            ]
+        ),
+        dataset_path,
+    )
+    output_path = tmp_path / "baseline.json"
+    write_json(
+        output_path,
+        [
+            {
+                "image_id": "clean-1",
+                "parsed_output": {
+                    "image_id": "clean-1",
+                    "predictions": [
+                        {"rule_id": 1, "decision_state": "no_violation"},
+                        {"rule_id": 2, "decision_state": "no_violation"},
+                        {"rule_id": 3, "decision_state": "no_violation"},
+                        {"rule_id": 4, "decision_state": "no_violation"},
+                    ],
+                },
+            },
+            {
+                "image_id": "rule1-1",
+                "parsed_output": {
+                    "image_id": "rule1-1",
+                    "predictions": [
+                        {"rule_id": 1, "decision_state": "violation"},
+                        {"rule_id": 2, "decision_state": "no_violation"},
+                        {"rule_id": 3, "decision_state": "no_violation"},
+                        {"rule_id": 4, "decision_state": "no_violation"},
+                    ],
+                },
+            },
+            {
+                "image_id": "rule14-1",
+                "parsed_output": {
+                    "image_id": "rule14-1",
+                    "predictions": [
+                        {"rule_id": 1, "decision_state": "no_violation"},
+                        {"rule_id": 2, "decision_state": "no_violation"},
+                        {"rule_id": 3, "decision_state": "no_violation"},
+                        {"rule_id": 4, "decision_state": "violation"},
+                    ],
+                },
+            },
+        ],
+    )
+
+    summary = summarize_baseline_run_from_dataset(
+        output_path=output_path,
+        target_parquet_paths=(dataset_path,),
+    )
+
+    assert summary["num_records"] == 3
+    assert summary["num_parsed"] == 3
+    assert summary["multi_label_cardinality"]["2"] == 1
+    assert summary["rule_metrics"]["1"]["tp"] == 1
+    assert summary["rule_metrics"]["1"]["fn"] == 1
+    assert summary["rule_metrics"]["4"]["tp"] == 1
+    assert "| rule1 |" in summary["rule_table_markdown"]

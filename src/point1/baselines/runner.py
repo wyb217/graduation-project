@@ -21,6 +21,7 @@ def run_api_baseline(
     max_tokens: int = 1200,
     show_progress: bool = False,
     task_profile: str = "structured",
+    prompt_style: str = "default",
 ) -> list[Point1BaselineRecord]:
     """Run one API baseline over a sequence of target samples."""
     records: list[Point1BaselineRecord] = []
@@ -34,6 +35,7 @@ def run_api_baseline(
                 mode=mode,
                 example_samples=example_samples,
                 task_profile=task_profile,
+                prompt_style=prompt_style,
             )
             raw_response = client.complete(
                 messages=messages,

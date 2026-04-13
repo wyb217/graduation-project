@@ -210,6 +210,61 @@ python scripts/analyze_point1_baselines.py \
 - `direct-localqwen-balanced_test_13x5.json`
 - `fiveshot-localqwen-balanced_test_13x5.json`
 
+## 作者风格 direct / 5-shot 全测试集
+
+现在脚本额外支持：
+
+- `--prompt-style author_vqa`：改用更接近作者仓库的稀疏 rule-dict VQA 输出格式；
+- 不传 `--target-registry` / `--target-split`：直接跑完整 `test.parquet`；
+- `--few-shot-example-profile author_train_mimic`：使用 **train** 中固定 5 张示例，
+  组合上贴近作者 few-shot（clean、rule1+3、rule1、rule4、rule1+2），
+  但避免直接拿 test 图像做 in-context example，保持 benchmark 口径更干净。
+
+### 1. author-style direct（full test）
+
+```bash
+conda activate graduation-project
+python scripts/run_point1_local_qwen_baseline.py \
+  --model-path /home/bml/storage/qwen3_models \
+  --mode direct \
+  --prompt-style author_vqa \
+  --task-profile structured \
+  --target-parquet test.parquet \
+  --output artifacts/point1/direct-localqwen-authorvqa-fulltest.json
+```
+
+### 2. author-style 5-shot（full test）
+
+```bash
+conda activate graduation-project
+python scripts/run_point1_local_qwen_baseline.py \
+  --model-path /home/bml/storage/qwen3_models \
+  --mode five_shot \
+  --prompt-style author_vqa \
+  --task-profile structured \
+  --target-parquet test.parquet \
+  --few-shot-parquet train-00001-of-00002.parquet train-00002-of-00002.parquet \
+  --few-shot-example-profile author_train_mimic \
+  --output artifacts/point1/fiveshot-localqwen-authorvqa-fulltest.json
+```
+
+### 3. 生成 full test 分 rule precision / recall 表
+
+```bash
+conda activate graduation-project
+python scripts/analyze_point1_baselines.py \
+  --direct-output artifacts/point1/direct-localqwen-authorvqa-fulltest.json \
+  --few-shot-output artifacts/point1/fiveshot-localqwen-authorvqa-fulltest.json \
+  --target-parquet test.parquet \
+  --output artifacts/point1/localqwen-authorvqa-fulltest-comparison.json
+```
+
+运行后：
+
+- `comparison.json` 会包含 direct / five-shot 两组 summary；
+- 每组 summary 里都有 `rule_metrics`；
+- 同时终端会直接打印 Markdown 表格，可直接贴到论文或实验记录中。
+
 ## 说明
 
 本地模型入口和 API baseline 使用的是同一套：

@@ -151,9 +151,9 @@ dataset = ConstructionSite10kDataset.from_parquet(
 
 ## 当前里程碑后的下一步
 
-1. Point 1 baseline 接口
-2. official bridge wrapper
-3. Rule 1 evidence -> executor -> explanation 路径
+1. official eval bridge wrapper
+2. Rule 1 evidence -> executor -> explanation 路径
+3. Rule 4 pair reasoning
 
 ## 快速测试子集
 
@@ -229,6 +229,25 @@ python scripts/run_point1_api_baseline.py \
   --output artifacts/point1/fiveshot-modelscope-balanced_test_13x5.json
 ```
 
+## official eval bridge
+
+如果你已经有 Point 1 baseline 输出文件，可以把它导出成 ConstructionSite10k 官方风格预测格式：
+
+```bash
+conda activate graduation-project
+python scripts/run_point1_eval.py \
+  --baseline-output artifacts/point1/fiveshot-modelscope-balanced_test_13x5.json \
+  --official-output artifacts/point1/fiveshot-modelscope-balanced_test_13x5.official.json \
+  --registry src/benchmark/splits/constructionsite10k_balanced_test_13x5.json \
+  --subset-name balanced_test_13x5 \
+  --summary-output artifacts/point1/fiveshot-modelscope-balanced_test_13x5.eval-summary.json
+```
+
+这个脚本会：
+
+- 导出官方风格预测文件，便于后续对接官方评测仓库；
+- 可选生成当前仓库内部 summary，先看 parse success、Macro-F1 和 bucket hit rate。
+
 ## 本地模型 baseline（Qwen3-VL-8B-Instruct）
 
 如果你在自己的服务器上下载了本地模型，可以不走外部 API，直接运行：
@@ -269,6 +288,45 @@ python scripts/run_point1_local_qwen_baseline.py \
 ```bash
 --task-profile classification_only
 ```
+
+### author-style 全测试集口径
+
+如果你要补作者风格的 direct / 5-shot，并直接在完整 `test.parquet`
+上导出分 rule precision / recall 表，可以用：
+
+```bash
+conda activate graduation-project
+python scripts/run_point1_local_qwen_baseline.py \
+  --model-path /home/bml/storage/qwen3_models \
+  --mode direct \
+  --prompt-style author_vqa \
+  --task-profile structured \
+  --target-parquet test.parquet \
+  --output artifacts/point1/direct-localqwen-authorvqa-fulltest.json
+
+python scripts/run_point1_local_qwen_baseline.py \
+  --model-path /home/bml/storage/qwen3_models \
+  --mode five_shot \
+  --prompt-style author_vqa \
+  --task-profile structured \
+  --target-parquet test.parquet \
+  --few-shot-parquet train-00001-of-00002.parquet train-00002-of-00002.parquet \
+  --few-shot-example-profile author_train_mimic \
+  --output artifacts/point1/fiveshot-localqwen-authorvqa-fulltest.json
+
+python scripts/analyze_point1_baselines.py \
+  --direct-output artifacts/point1/direct-localqwen-authorvqa-fulltest.json \
+  --few-shot-output artifacts/point1/fiveshot-localqwen-authorvqa-fulltest.json \
+  --target-parquet test.parquet \
+  --output artifacts/point1/localqwen-authorvqa-fulltest-comparison.json
+```
+
+说明：
+
+- `author_vqa` 使用更接近作者仓库的 sparse rule-dict 输出格式；
+- full test 分析时不需要 `--target-registry` / `--target-split`；
+- `author_train_mimic` few-shot 示例固定来自 **train**，避免把 test 图像直接当作
+  in-context example，尽量保持 benchmark 口径正确。
 
 更多实现状态见：
 

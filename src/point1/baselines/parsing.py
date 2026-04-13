@@ -19,7 +19,14 @@ def parse_prediction_set_response(
 ) -> Point1ImagePredictionSet:
     """Parse one raw model response into a validated structured prediction set."""
     payload = _load_json_payload(response_text)
-    predictions = tuple(_parse_prediction(item, sample=sample) for item in payload["predictions"])
+    if "predictions" in payload:
+        predictions = tuple(
+            _parse_prediction(item, sample=sample) for item in payload["predictions"]
+        )
+    elif "violated_rule_ids" in payload:
+        predictions = _parse_author_style_payload(payload, sample=sample)
+    else:
+        predictions = _parse_author_sparse_rule_payload(payload, sample=sample)
     if len(predictions) != 4:
         raise ValueError(f"Expected 4 predictions, got {len(predictions)}.")
     return Point1ImagePredictionSet(image_id=str(payload["image_id"]), predictions=predictions)
@@ -92,3 +99,92 @@ def _try_normalize_pixel_bbox(
         values[2] / width,
         values[3] / height,
     ]
+
+
+def _parse_author_style_payload(
+    payload: dict[str, Any],
+    *,
+    sample: ConstructionSiteSample | None,
+) -> tuple[Point1Prediction, ...]:
+    violated_rule_ids = {int(rule_id) for rule_id in payload.get("violated_rule_ids", [])}
+    explanation = str(payload.get("explanation", "")).strip()
+    raw_bbox = payload.get("target_bbox")
+    bbox = None if raw_bbox is None else _parse_bbox(raw_bbox, sample=sample)
+    predictions: list[Point1Prediction] = []
+    for rule_id in range(1, 5):
+        is_violated = rule_id in violated_rule_ids
+        predictions.append(
+            Point1Prediction(
+                rule_id=rule_id,
+                decision_state="violation" if is_violated else "no_violation",
+                target_bbox=bbox if is_violated else None,
+                supporting_evidence_ids=(),
+                counter_evidence_ids=(),
+                unknown_items=(),
+                reason_slots={},
+                reason_text=explanation if is_violated else "",
+                confidence=float(payload.get("confidence", 1.0 if violated_rule_ids else 0.0)),
+            )
+        )
+    return tuple(predictions)
+
+
+def _parse_author_sparse_rule_payload(
+    payload: dict[str, Any],
+    *,
+    sample: ConstructionSiteSample | None,
+) -> tuple[Point1Prediction, ...]:
+    sparse_predictions = payload.copy()
+    sparse_predictions.pop("image_id", None)
+
+    if "0" in sparse_predictions:
+        sparse_predictions = {}
+
+    predictions: list[Point1Prediction] = []
+    for rule_id in range(1, 5):
+        raw_prediction = sparse_predictions.get(str(rule_id))
+        if raw_prediction is None:
+            predictions.append(
+                Point1Prediction(
+                    rule_id=rule_id,
+                    decision_state="no_violation",
+                    target_bbox=None,
+                    supporting_evidence_ids=(),
+                    counter_evidence_ids=(),
+                    unknown_items=(),
+                    reason_slots={},
+                    reason_text="",
+                    confidence=0.0,
+                )
+            )
+            continue
+
+        reason_text = ""
+        raw_bbox: Any = None
+        if isinstance(raw_prediction, dict):
+            reason_text = str(raw_prediction.get("reason", "")).strip()
+            raw_bbox = _extract_sparse_bbox(raw_prediction)
+        else:
+            reason_text = str(raw_prediction).strip()
+        bbox = None if raw_bbox is None else _parse_bbox(raw_bbox, sample=sample)
+        predictions.append(
+            Point1Prediction(
+                rule_id=rule_id,
+                decision_state="violation",
+                target_bbox=bbox,
+                supporting_evidence_ids=(),
+                counter_evidence_ids=(),
+                unknown_items=(),
+                reason_slots={},
+                reason_text=reason_text,
+                confidence=1.0,
+            )
+        )
+    return tuple(predictions)
+
+
+def _extract_sparse_bbox(raw_prediction: dict[str, Any]) -> Any:
+    for key in ("bounding_box", "bounding box", "bbox"):
+        if key in raw_prediction:
+            return raw_prediction[key]
+    return None
