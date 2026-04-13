@@ -342,11 +342,35 @@ python scripts/analyze_point1_baselines.py \
 - OpenCV HOG people detector 生成人框
 - 基于 crop 的轻量 PPE heuristic 判别
 
+当前 `pipeline` 的工作顺序是：
+
+1. 为单张图像生成人候选；
+2. 对每个候选抽取 Rule 1 predicates；
+3. 由显式 executor 给出 `violation / no_violation / unknown`；
+4. 把 executor 的结构化结果映射成 `reason_slots` 与 `reason_text`。
+
+这里的 `explain` 不是自由文本生成，而是 **executor 驱动的结构化解释**：
+
+- `reason_slots` 来自缺失项 / unknown 项 / 候选主体；
+- `reason_text` 由模板函数从这些结构化状态生成；
+- 因此 explanation 与 predicates / executor 保持一一对应。
+
 这条链路当前主要用于：
 
 - 主方法骨架搭建
 - smoke test
 - Rule 1 单规则方法验证
+
+当前 Point 1 中 **VLM 的角色仍主要在 baseline**：
+
+- direct / 5-shot / author-style prompt 这些对照组已经使用 VLM；
+- 当前 Rule 1 主链路本身还没有把 VLM 放进 predicate extraction。
+
+后续更推荐的演化方向不是“统一 VLM 最终判别”，而是：
+
+- `candidate -> unified VLM predicate judge -> executor -> explanation`
+
+也就是说，让 VLM 统一做局部谓词判别，而把最终规则决策继续保留在 executor 中。
 
 如果你要在新环境里运行 Rule 1 真实视觉链路，确保已经安装：
 

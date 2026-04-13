@@ -37,6 +37,10 @@ Point 1 研究：
 - Candidate：person + body part crops
 - Predicates：hard_hat / upper_body_covered / lower_body_covered / toe_covered / visibility
 - 主输出：person bbox
+- 当前实现注记：
+  - 现阶段仓库已具备 Rule 1 的第一条主方法链路；
+  - 当前默认实现是 `candidate + heuristic predicates + symbolic executor`；
+  - 当前输出仍是 per-candidate prediction，尚未完成 image-level aggregation。
 
 ### Rule 2
 - Candidate：person + local context
@@ -84,3 +88,30 @@ Point 1 研究：
 6. Rule 2 / Rule 3
 7. executor + explanation hardening
 8. official bridge + ablations + error analysis
+
+## 当前策略说明：VLM 在 Point 1 中的位置
+
+当前 Point 1 里，VLM 已经承担 baseline 对照角色：
+
+- direct / zero-shot
+- 5-shot
+- author-style prompt
+
+但在主方法链路中，VLM 目前还没有直接进入 Rule 1 predicate extraction。
+
+这样做的原因是：
+
+- Point 1 的核心研究目标不是“再做一个统一黑箱判别器”；
+- 而是把识别过程改写成显式的：
+
+`candidate -> evidence/predicate -> rule executor -> explanation`
+
+因此后续更推荐的演进方向不是：
+
+- `candidate -> unified VLM final decision`
+
+而是：
+
+- `candidate -> unified VLM predicate extraction -> executor -> explanation`
+
+换句话说，VLM 更适合作为 **统一的局部谓词判别器**，而不是最终 rule decision 的唯一来源。
