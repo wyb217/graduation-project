@@ -33,6 +33,27 @@
 - Point 2 的目标是跨场景鲁棒性、precision / grounding IoU / 解释一致性的提升。
 - Point 2 不得破坏 Point 1 的闭域 benchmark 实验口径。
 
+## Point 1 baseline / BML 运行约定
+- Point 1 baseline 当前优先支持 **本地 Qwen** 路径；BML 默认模型路径约定为：
+  - `/home/bml/storage/qwen3_models`
+- 与 Point 1 baseline 相关的实验，默认先做 smoke test，再做 full test：
+  - 先用 `--limit 5` 或 `--limit 20` 验证 parse / output / summary 正常；
+  - 确认无误后再跑完整 `test.parquet`。
+- 如果目标是补 **per-rule precision / recall / F1** 表，默认优先使用：
+  - `--task-profile classification_only`
+  - `structured` 主要用于 bbox / grounding 相关分析，不是默认 first pass。
+- subset 与 full test 口径必须区分：
+  - `balanced_test_13x5`：仅用于 smoke test、prompt 调试、快速对比；
+  - `test.parquet`：用于正式 full test 主表与分 rule 指标。
+- 当需求包含“全测试集 / full test / 分 rule 表”时，默认应走 full test，不要自动退回 subset。
+- 仓库支持 `--prompt-style author_vqa`，用于接近作者仓库的 VQA prompt 契约。
+- 作者版本 5-shot 默认采用 **无泄漏版**：
+  - direct：使用作者 prompt；
+  - five-shot：使用作者 prompt 模板，但 few-shot 示例必须来自 **train-only 固定样本**。
+- 官方仓库中的 5-shot 示例来自 `test_split`；默认实现不得把这些 test 示例作为主 benchmark 的 in-context examples。
+- 如果以后需要“严格照搬作者 test-shot”的实验，必须作为单独显式 profile / 单独实验存在，不能覆盖默认口径。
+- 当前默认 few-shot 示例必须固定，不允许每轮随机抽样；若使用 `author_train_mimic`，应继续保持 train-only 固定 image IDs 策略。
+
 ## 代码风格
 - 使用 Python `src/` 布局。
 - 所有公开函数、类、dataclass 都要写类型标注。
