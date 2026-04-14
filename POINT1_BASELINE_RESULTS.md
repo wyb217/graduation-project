@@ -1,6 +1,6 @@
 # Point 1 Baseline Results Summary
 
-更新时间：2026-04-12
+更新时间：2026-04-14
 
 本文档总结当前 Point 1 第一阶段 baseline 的实际实验结果与当前评测状态。
 所有结果均基于闭域 quick-test 子集：
@@ -277,11 +277,72 @@ baseline 稳定性都会明显下降。
 
 ---
 
-## 7. 当前评测出口状态
+## 7. Full test（3004）结果：BML Local Qwen + author-style prompt
+
+在 full test 上，我们额外补跑了：
+
+1. **BML Local Qwen author-style direct + classification_only**
+2. **BML Local Qwen author-style 5-shot + classification_only**
+
+说明：
+
+- 模型：`/home/bml/storage/qwen3_models`
+- 评测集合：`test.parquet`（3004 张）
+- prompt 口径：`author_vqa`
+- few-shot 口径：**无泄漏版** `author_train_mimic`
+- 输出类型：`classification_only`
+
+### 7.1 Full test 解析情况
+
+- direct parse success rate: `3004 / 3004 = 100%`
+- 5-shot parse success rate: `3004 / 3004 = 100%`
+
+这说明当前 author-style full test 路径已经稳定，不再像早期 structured baseline 那样主要受协议解析问题限制。
+
+### 7.2 论文风格分 rule 表
+
+> 表：BML Local Qwen3-VL 在 ConstructionSite10k full test 上的 author-style classification-only 结果
+
+| Rule | Direct P | Direct R | Direct F1 | 5-shot P | 5-shot R | 5-shot F1 |
+|---|---:|---:|---:|---:|---:|---:|
+| rule1 | 0.197 | 0.481 | 0.280 | 0.206 | 0.917 | 0.336 |
+| rule2 | 0.043 | 0.680 | 0.081 | 0.062 | 0.880 | 0.116 |
+| rule3 | 0.052 | 0.651 | 0.096 | 0.086 | 0.286 | 0.132 |
+| rule4 | 0.019 | 0.708 | 0.036 | 0.026 | 0.208 | 0.045 |
+| macro-F1 | - | - | 0.123 | - | - | 0.157 |
+
+### 7.3 Full test 小结
+
+这组 full test 结果有几个很清楚的现象：
+
+1. **5-shot 整体优于 direct**
+   - macro-F1 从 `0.123` 提升到 `0.157`
+
+2. **Rule 1 / Rule 2 的提升主要来自 recall 上升**
+   - rule1 recall 从 `0.481` 提升到 `0.917`
+   - rule2 recall 从 `0.680` 提升到 `0.880`
+   - precision 仅小幅改善，说明模型仍有明显过报倾向
+
+3. **Rule 3 / Rule 4 在 5-shot 下更保守**
+   - rule3 recall 从 `0.651` 降到 `0.286`，但 precision 从 `0.052` 升到 `0.086`
+   - rule4 recall 从 `0.708` 降到 `0.208`，但 precision 从 `0.019` 升到 `0.026`
+   - 最终 F1 仍略有改善，但 rule4 依然是最薄弱规则
+
+4. **full test 明确暴露了本地 Qwen 的“高 recall、低 precision”特征**
+   - direct 尤其明显，rule2 / rule3 / rule4 大量误报
+   - 5-shot 虽然改善了整体 F1，但没有从根本上解决 precision 偏低的问题
+
+因此，这组结果非常适合作为 Point 1 主方法的动机：
+
+> black-box VLM baseline 虽然能报出较多违规，但 precision 控制较差，尤其在复杂规则上容易过报，因此需要显式的 `candidate -> predicate -> executor -> explanation` 证据链方法来约束决策。
+
+---
+
+## 8. 当前评测出口状态
 
 当前仓库已经具备两层结果消费能力：
 
-### 7.1 内部 summary / comparison
+### 8.1 内部 summary / comparison
 
 用于快速看：
 
@@ -294,7 +355,7 @@ baseline 稳定性都会明显下降。
 
 - `scripts/analyze_point1_baselines.py`
 
-### 7.2 official eval bridge
+### 8.2 official eval bridge
 
 仓库现在已经补上了一个最小 official eval bridge。
 它的作用不是“重新评分”，而是：
@@ -315,17 +376,18 @@ baseline 稳定性都会明显下降。
 
 ---
 
-## 8. 下一步建议
+## 9. 下一步建议
 
-1. 专门分析 BML `5-shot + structured` 中 `rule4 = 0` 的原因
-2. 用新的 official eval bridge，把现有 baseline 统一导出成官方风格预测文件
-3. 明确记录哪些结果用于论文主表，哪些结果只作为 error analysis
-4. 在 baseline 口径稳定后，再进入 Point 1 主方法第一条真实链路：
+1. 将这组 full test 结果整理为论文主表候选版本，并补充正式表题/图注
+2. 专门分析 Rule 4 在 direct / 5-shot 下 precision 极低的原因
+3. 用新的 official eval bridge，把现有 baseline 统一导出成官方风格预测文件
+4. 明确记录哪些结果用于论文主表，哪些结果只作为 error analysis
+5. 在 baseline 口径稳定后，再进入 Point 1 主方法第一条真实链路：
    - Rule 1 `candidate -> predicate -> executor -> explanation`
 
 ---
 
-## 9. 当前建议保留的核心结果文件
+## 10. 当前建议保留的核心结果文件
 
 建议保留：
 
@@ -344,9 +406,14 @@ baseline 稳定性都会明显下降。
 - `artifacts/point1/fiveshot-localqwen-balanced_test_13x5.eval-summary.json`
 - `artifacts/point1/directcls-localqwen-balanced_test_13x5.json`
 - `artifacts/point1/directcls-localqwen-balanced_test_13x5.summary.json`
+- `artifacts/point1/directcls-localqwen-authorvqa-fulltest.json`
+- `artifacts/point1/directcls-localqwen-authorvqa-fulltest.summary.json`
 - `artifacts/point1/fiveshotcls-localqwen-balanced_test_13x5.json`
 - `artifacts/point1/fiveshotcls-localqwen-balanced_test_13x5.summary.json`
+- `artifacts/point1/fiveshotcls-localqwen-authorvqa-fulltest.json`
+- `artifacts/point1/fiveshotcls-localqwen-authorvqa-fulltest.summary.json`
 - `artifacts/point1/localqwen-cls-comparison.json`
+- `artifacts/point1/localqwen-authorvqa-fulltest-comparison.json`
 - `artifacts/point1/localqwen-structured-comparison.json`
 
 如果后续开始统一导出官方风格预测文件，建议并列保留：

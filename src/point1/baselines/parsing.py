@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import json
 import re
 from typing import Any
@@ -19,6 +20,7 @@ def parse_prediction_set_response(
 ) -> Point1ImagePredictionSet:
     """Parse one raw model response into a validated structured prediction set."""
     payload = _load_json_payload(response_text)
+    image_id = _resolve_image_id(payload, sample=sample)
     if "predictions" in payload:
         predictions = tuple(
             _parse_prediction(item, sample=sample) for item in payload["predictions"]
@@ -29,7 +31,7 @@ def parse_prediction_set_response(
         predictions = _parse_author_sparse_rule_payload(payload, sample=sample)
     if len(predictions) != 4:
         raise ValueError(f"Expected 4 predictions, got {len(predictions)}.")
-    return Point1ImagePredictionSet(image_id=str(payload["image_id"]), predictions=predictions)
+    return Point1ImagePredictionSet(image_id=image_id, predictions=predictions)
 
 
 def _load_json_payload(response_text: str) -> dict[str, Any]:
@@ -39,10 +41,34 @@ def _load_json_payload(response_text: str) -> dict[str, Any]:
         if match is None:
             raise ValueError("Could not find JSON object inside markdown fence.")
         stripped = match.group(1)
-    payload = json.loads(stripped)
-    if not isinstance(payload, dict):
+    payload = _try_load_dict(stripped)
+    if payload is None:
         raise ValueError("Model response must be a JSON object.")
     return payload
+
+
+def _try_load_dict(candidate: str) -> dict[str, Any] | None:
+    for loader in (json.loads, ast.literal_eval):
+        try:
+            payload = loader(candidate)
+        except (json.JSONDecodeError, SyntaxError, ValueError):
+            continue
+        if isinstance(payload, dict):
+            return payload
+    return None
+
+
+def _resolve_image_id(
+    payload: dict[str, Any],
+    *,
+    sample: ConstructionSiteSample | None,
+) -> str:
+    raw_image_id = payload.get("image_id")
+    if raw_image_id is not None:
+        return str(raw_image_id)
+    if sample is not None:
+        return sample.image_id
+    raise ValueError("Model response is missing image_id and no sample context was provided.")
 
 
 def _parse_prediction(
@@ -166,6 +192,21 @@ def _parse_author_sparse_rule_payload(
             raw_bbox = _extract_sparse_bbox(raw_prediction)
         else:
             reason_text = str(raw_prediction).strip()
+        if _looks_like_negative_sparse_reason(reason_text):
+            predictions.append(
+                Point1Prediction(
+                    rule_id=rule_id,
+                    decision_state="no_violation",
+                    target_bbox=None,
+                    supporting_evidence_ids=(),
+                    counter_evidence_ids=(),
+                    unknown_items=(),
+                    reason_slots={},
+                    reason_text=reason_text,
+                    confidence=0.0,
+                )
+            )
+            continue
         bbox = None if raw_bbox is None else _parse_bbox(raw_bbox, sample=sample)
         predictions.append(
             Point1Prediction(
@@ -188,3 +229,23 @@ def _extract_sparse_bbox(raw_prediction: dict[str, Any]) -> Any:
         if key in raw_prediction:
             return raw_prediction[key]
     return None
+
+
+def _looks_like_negative_sparse_reason(reason_text: str) -> bool:
+    normalized = reason_text.strip().lower()
+    negative_phrases = (
+        "no violations",
+        "no violation",
+        "no visible violation",
+        "workers are wearing",
+        "no workers are visible",
+        "no workers are in",
+        "no underground",
+        "rule does not apply",
+        "does not apply",
+        "not visible",
+        "not enough to make a judgement",
+        "impossible to assess",
+        "unclear",
+    )
+    return any(phrase in normalized for phrase in negative_phrases)

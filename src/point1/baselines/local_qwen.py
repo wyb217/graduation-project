@@ -114,7 +114,7 @@ class LocalQwen3VLClient:
         messages: list[dict[str, Any]] = [
             {
                 "role": "system",
-                "content": get_system_prompt(prompt_style),
+                "content": [{"type": "text", "text": get_system_prompt(prompt_style)}],
             }
         ]
         if mode == "five_shot":
