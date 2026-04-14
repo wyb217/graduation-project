@@ -197,7 +197,7 @@ class TorchvisionPersonCandidateGenerator:
         return self._person_detector
 
     def _pil_to_tensor(self, image):
-        rgb = self._numpy.asarray(image)
+        rgb = self._numpy.array(image, copy=True)
         return self._torch.from_numpy(rgb).permute(2, 0, 1).float() / 255.0
 
 

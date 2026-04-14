@@ -151,3 +151,37 @@ def test_hog_then_torchvision_generator_uses_fallback_when_hog_finds_nothing() -
     assert len(candidates) == 1
     assert candidates[0].candidate_id == "person-2"
     assert fallback.called is True
+
+
+def test_torchvision_pil_to_tensor_copies_array_before_from_numpy() -> None:
+    """Torchvision fallback should hand PyTorch a writable array copy."""
+    from PIL import Image
+
+    class FakeTensor:
+        def permute(self, *args):  # noqa: ANN002
+            return self
+
+        def float(self):
+            return self
+
+        def __truediv__(self, other: float):  # noqa: ANN001
+            return self
+
+    class FakeTorch:
+        def __init__(self) -> None:
+            self.array_is_writable: bool | None = None
+
+        def from_numpy(self, array):  # noqa: ANN001
+            self.array_is_writable = bool(array.flags.writeable)
+            return FakeTensor()
+
+    generator = TorchvisionPersonCandidateGenerator(person_detector=object())
+    generator._numpy = __import__("numpy")  # noqa: SLF001
+    fake_torch = FakeTorch()
+    generator._torch = fake_torch  # noqa: SLF001
+
+    image = Image.new("RGB", (16, 16), color=(128, 128, 128))
+
+    generator._pil_to_tensor(image)  # noqa: SLF001
+
+    assert fake_torch.array_is_writable is True

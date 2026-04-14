@@ -162,14 +162,24 @@
 
 当前已经拿到的 BML local Qwen 结果说明：
 
-- Rule 1 在 26/65 上都可以做到 `fp = 0`
-- 但 recall 仍停留在 `3 / 13 = 0.231`
-- 主要瓶颈不是 local Qwen predicate，而是大量样本直接落入 `unknown(person_detection)`
+- **旧版 local Qwen + HOG**：
+  - 26 张：`P/R/F1 = 1.000 / 0.231 / 0.375`
+  - 65 张：`P/R/F1 = 1.000 / 0.231 / 0.375`
+- **新版 hog_then_torchvision + local Qwen**：
+  - 26 张：`P/R/F1 = 1.000 / 0.846 / 0.917`
+  - 65 张：`P/R/F1 = 0.917 / 0.846 / 0.880`
 
-因此当前 Rule 1 的最直接改进方向已经从“继续换 predicate backend”收敛为：
+这说明：
 
-- **优先提升 candidate detector recall**
-- 保留现有 gate / executor / explanation 不变
+1. 之前的核心瓶颈确实是 `person_detection`
+2. detector fallback 一旦打通，Rule 1 recall 会出现明显提升
+3. 当前这条 `hog_then_torchvision + local Qwen + executor` 路径已经成为最值得继续推进的 Rule 1 主线
+
+因此当前 Rule 1 的最直接改进方向已经从“先换 predicate backend”切换为：
+
+- **先保留新的 detector fallback 主线**
+- 再继续分析剩余的 FP / FN / unknown
+- 在这条链稳定后，直接扩到 full test 评估
 
 ## parquet 数据支持
 
@@ -219,11 +229,12 @@
 
 ## 下一阶段建议
 
-1. 把这次 local Qwen 26/65 结果作为 Rule 1 当前阶段性基线记录下来；
-2. 先改 detector，而不是继续优先改 predicate backend；
-3. 增加显式 detector 开关，先做 `hog_then_torchvision` 这类高召回 fallback；
-4. 重新跑：
-   - `balanced_test_13x5_clean + balanced_test_13x5_rule1`
-   - `balanced_test_13x5`
-5. 如果 detector recall 明显改善，再继续进入 Rule 4 pair reasoning 与 edge-related modules；
+1. 把这次 `hog_then_torchvision + local Qwen` 的 26/65 结果正式记录为 Rule 1 当前最佳路径；
+2. 基于这条最佳路径，补 fulltest 运行/summary/export 入口；
+3. 在 BML 上跑 Rule 1 full test，拿到 Rule 1 的 3004 张主结果；
+4. fulltest 跑完后，再分析：
+   - 唯一 FP
+   - 剩余 FN
+   - 高频 unknown 项（尤其 `toe_covered`）
+5. Rule 1 fulltest 稳定后，再继续进入 Rule 4 pair reasoning 与 edge-related modules；
 6. 持续补强 stratified metrics、error analysis 与 failure export。

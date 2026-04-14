@@ -513,6 +513,139 @@ def test_run_point1_rule1_pipeline_builds_hybrid_candidate_backend_when_requeste
     assert "candidate_generator" in built["pipeline_kwargs"]
 
 
+def test_run_point1_rule1_pipeline_supports_fulltest_mode_without_registry(
+    tmp_path: Path,
+) -> None:
+    """The script should support dataset-backed Rule 1 fulltest summaries."""
+    module = _load_rule1_module()
+    dataset_path = tmp_path / "target.parquet"
+    output_path = tmp_path / "rule1.json"
+    summary_path = tmp_path / "rule1.summary.json"
+
+    pq.write_table(
+        pa.Table.from_pylist(
+            [
+                {
+                    "image_id": "clean-1",
+                    "image": {"bytes": b"fake-image-clean", "path": "clean.jpg"},
+                    "image_caption": "clean sample",
+                    "illumination": "day",
+                    "camera_distance": "mid",
+                    "view": "front",
+                    "quality_of_info": "rich",
+                    "rule_1_violation": None,
+                    "rule_2_violation": None,
+                    "rule_3_violation": None,
+                    "rule_4_violation": None,
+                },
+                {
+                    "image_id": "rule1-1",
+                    "image": {"bytes": b"fake-image-rule1", "path": "rule1.jpg"},
+                    "image_caption": "rule1 sample",
+                    "illumination": "day",
+                    "camera_distance": "mid",
+                    "view": "front",
+                    "quality_of_info": "rich",
+                    "rule_1_violation": {"bounding_box": [[0.1, 0.2, 0.3, 0.4]], "reason": "r1"},
+                    "rule_2_violation": None,
+                    "rule_3_violation": None,
+                    "rule_4_violation": None,
+                },
+            ]
+        ),
+        dataset_path,
+    )
+
+    built: dict[str, object] = {}
+
+    def fake_run_rule1_pipeline(  # noqa: ANN001
+        *,
+        target_samples,
+        pipeline=None,
+        show_progress=False,
+        **kwargs,
+    ):
+        built["num_samples"] = len(target_samples)
+        return [
+            Point1BaselineRecord(
+                image_id="clean-1",
+                provider_name="rule1_pipeline",
+                model_name="opencv_hog+heuristic_rule1",
+                mode="rule1_smallloop",
+                raw_response_text="",
+                parsed_output=Point1ImagePredictionSet(
+                    image_id="clean-1",
+                    predictions=(
+                        Point1Prediction(
+                            rule_id=1,
+                            decision_state="no_violation",
+                            target_bbox=None,
+                            supporting_evidence_ids=(),
+                            counter_evidence_ids=("person-1:hard_hat_visible",),
+                            unknown_items=(),
+                            reason_slots={},
+                            reason_text="clean",
+                            confidence=0.9,
+                        ),
+                    ),
+                ),
+            ),
+            Point1BaselineRecord(
+                image_id="rule1-1",
+                provider_name="rule1_pipeline",
+                model_name="opencv_hog+heuristic_rule1",
+                mode="rule1_smallloop",
+                raw_response_text="",
+                parsed_output=Point1ImagePredictionSet(
+                    image_id="rule1-1",
+                    predictions=(
+                        Point1Prediction(
+                            rule_id=1,
+                            decision_state="violation",
+                            target_bbox=NormalizedBBox(0.1, 0.2, 0.3, 0.4),
+                            supporting_evidence_ids=("person-1:hard_hat_visible",),
+                            counter_evidence_ids=(),
+                            unknown_items=(),
+                            reason_slots={},
+                            reason_text="rule1",
+                            confidence=0.9,
+                        ),
+                    ),
+                ),
+            ),
+        ]
+
+    def fake_summarize_rule1_run_from_dataset(**kwargs):  # noqa: ANN003
+        built["summary_kwargs"] = kwargs
+        return {"rule1_precision": 1.0, "rule1_recall": 1.0}
+
+    module.run_rule1_pipeline = fake_run_rule1_pipeline
+    module.summarize_rule1_run_from_dataset = fake_summarize_rule1_run_from_dataset
+
+    argv = sys.argv
+    try:
+        sys.argv = [
+            "run_point1_rule1_pipeline.py",
+            "--fulltest",
+            "--target-parquet",
+            str(dataset_path),
+            "--output",
+            str(output_path),
+            "--summary-output",
+            str(summary_path),
+        ]
+        module.main()
+    finally:
+        sys.argv = argv
+
+    assert built["num_samples"] == 2
+    assert built["summary_kwargs"] == {
+        "output_path": output_path,
+        "target_parquet_paths": (dataset_path,),
+    }
+    assert read_json(summary_path)["rule1_precision"] == 1.0
+
+
 def test_run_point1_rule1_pipeline_supports_bucketed_summary_with_explicit_positive_split(
     tmp_path: Path,
 ) -> None:

@@ -8,9 +8,11 @@ from pathlib import Path
 
 from benchmark.constructionsite10k.loader import ConstructionSite10kDataset
 from benchmark.constructionsite10k.registry import SplitRegistry
+from benchmark.constructionsite10k.types import ConstructionSiteSample
 from common.io.json_io import write_json
 from eval.reports.point1_rule1_summary import (
     summarize_rule1_bucketed_run,
+    summarize_rule1_run_from_dataset,
     summarize_rule1_smallloop,
 )
 from point1.baselines import OpenAICompatibleVisionClient, load_provider_catalog
@@ -32,15 +34,20 @@ def build_parser() -> argparse.ArgumentParser:
         help="Parquet shard paths for the target dataset.",
     )
     parser.add_argument(
+        "--fulltest",
+        action="store_true",
+        help="Run Rule 1 over the full target parquet without registry-driven subset filtering.",
+    )
+    parser.add_argument(
         "--registry",
         type=Path,
-        required=True,
+        default=None,
         help="Frozen registry containing the clean/rule1 split names to run.",
     )
     parser.add_argument(
         "--target-split-names",
         nargs="+",
-        required=True,
+        default=None,
         help=(
             "Ordered split names to combine, e.g. clean then rule1 or "
             "clean/rule2/rule3/rule4/rule1."
@@ -126,8 +133,52 @@ def main() -> None:
     """Parse arguments, run the Rule 1 pipeline, and write output plus summary."""
     args = build_parser().parse_args()
 
-    if len(args.target_split_names) < 2:
-        raise ValueError("Rule 1 run expects at least two split names.")
+    target_samples, summary_context = _load_target_samples(args)
+    pipeline, provider_name, model_name, mode = _build_rule1_runtime(args)
+
+    records = run_rule1_pipeline(
+        target_samples=target_samples,
+        pipeline=pipeline,
+        provider_name=provider_name,
+        model_name=model_name,
+        mode=mode,
+        show_progress=True,
+    )
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    write_json(args.output, [record.to_dict() for record in records])
+    print(json.dumps({"output": str(args.output)}, ensure_ascii=False, indent=2))
+
+    summary_output = args.summary_output or args.output.with_suffix(".summary.json")
+    summary = _build_summary(
+        args=args,
+        output_path=args.output,
+        target_samples=target_samples,
+        summary_context=summary_context,
+    )
+    summary_output.parent.mkdir(parents=True, exist_ok=True)
+    write_json(summary_output, summary)
+    print(json.dumps({"summary_output": str(summary_output)}, ensure_ascii=False, indent=2))
+
+
+def _load_target_samples(
+    args: argparse.Namespace,
+) -> tuple[tuple[ConstructionSiteSample, ...], dict[str, object]]:
+    if args.fulltest:
+        if args.target_split_names:
+            raise ValueError("--target-split-names cannot be used with --fulltest.")
+        if args.registry is not None:
+            raise ValueError("--registry cannot be used with --fulltest.")
+        dataset = ConstructionSite10kDataset.from_parquet(
+            args.target_parquet,
+            include_image_bytes=True,
+        )
+        target_samples = dataset.samples if args.limit is None else dataset.samples[: args.limit]
+        return tuple(target_samples), {"mode": "fulltest"}
+
+    if args.target_split_names is None or len(args.target_split_names) < 2:
+        raise ValueError("Rule 1 run expects at least two split names unless --fulltest is set.")
+    if args.registry is None:
+        raise ValueError("--registry is required unless --fulltest is set.")
 
     registry = SplitRegistry.from_json(args.registry)
     positive_split_name = _resolve_positive_split_name(args)
@@ -144,51 +195,55 @@ def main() -> None:
         if image_id in available_sample_ids
     )
     target_samples = ordered_samples if args.limit is None else ordered_samples[: args.limit]
-    pipeline, provider_name, model_name, mode = _build_rule1_runtime(args)
+    return target_samples, {
+        "mode": "subset",
+        "registry": registry,
+        "positive_split_name": positive_split_name,
+    }
 
-    records = run_rule1_pipeline(
-        target_samples=target_samples,
-        pipeline=pipeline,
-        provider_name=provider_name,
-        model_name=model_name,
-        mode=mode,
-        show_progress=True,
-    )
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    write_json(args.output, [record.to_dict() for record in records])
-    print(json.dumps({"output": str(args.output)}, ensure_ascii=False, indent=2))
 
-    summary_output = args.summary_output or args.output.with_suffix(".summary.json")
+def _build_summary(
+    *,
+    args: argparse.Namespace,
+    output_path: Path,
+    target_samples,
+    summary_context: dict[str, object],
+) -> dict[str, object]:
+    if summary_context["mode"] == "fulltest":
+        return summarize_rule1_run_from_dataset(
+            output_path=output_path,
+            target_parquet_paths=tuple(args.target_parquet),
+        )
+
+    positive_split_name = str(summary_context["positive_split_name"])
     if (
         args.limit is None
         and len(args.target_split_names) == 2
         and positive_split_name == args.target_split_names[1]
     ):
-        summary = summarize_rule1_smallloop(
-            output_path=args.output,
+        return summarize_rule1_smallloop(
+            output_path=output_path,
             registry_path=args.registry,
             clean_split_name=args.target_split_names[0],
             positive_split_name=positive_split_name,
         )
-    else:
-        selected_image_ids = tuple(sample.image_id for sample in target_samples)
-        selected_image_id_set = set(selected_image_ids)
-        bucket_image_ids = {
-            split_name: tuple(
-                image_id
-                for image_id in registry.get_split(split_name)
-                if image_id in selected_image_id_set
-            )
-            for split_name in args.target_split_names
-        }
-        summary = summarize_rule1_bucketed_run(
-            output_path=args.output,
-            bucket_image_ids=bucket_image_ids,
-            positive_bucket_name=positive_split_name,
+
+    registry = summary_context["registry"]
+    selected_image_ids = tuple(sample.image_id for sample in target_samples)
+    selected_image_id_set = set(selected_image_ids)
+    bucket_image_ids = {
+        split_name: tuple(
+            image_id
+            for image_id in registry.get_split(split_name)
+            if image_id in selected_image_id_set
         )
-    summary_output.parent.mkdir(parents=True, exist_ok=True)
-    write_json(summary_output, summary)
-    print(json.dumps({"summary_output": str(summary_output)}, ensure_ascii=False, indent=2))
+        for split_name in args.target_split_names
+    }
+    return summarize_rule1_bucketed_run(
+        output_path=output_path,
+        bucket_image_ids=bucket_image_ids,
+        positive_bucket_name=positive_split_name,
+    )
 
 
 def _merge_split_image_ids(

@@ -370,62 +370,82 @@ baseline 稳定性都会明显下降。
 
 ### 8.1 26 张（clean + rule1）
 
+在加入 `hog_then_torchvision` detector fallback 之后，26 张结果更新为：
+
 - parse success rate: `26 / 26 = 100%`
 - precision: `1.000`
-- recall: `0.231`
-- F1: `0.375`
+- recall: `0.846`
+- F1: `0.917`
 - FP: `0`
-- unknown rate: `0.769`
+- unknown rate: `0.462`
 
-与已有结果相比：
+与上一版 local Qwen Rule 1 小闭环相比：
 
-- 明显优于 heuristic 版（F1 `0.211 -> 0.375`）
-- 与 gated ModelScope VLM 26 张结果持平
-- 这说明当前 gate + executor 逻辑已经能把误报压到 0，但 recall 仍偏低
+- recall：`0.231 -> 0.846`
+- F1：`0.375 -> 0.917`
+- unknown rate：`0.769 -> 0.462`
+
+这说明 detector fallback 在 `clean + rule1` 小闭环上已经显著缓解了 `unknown(person_detection)`。
 
 ### 8.2 65 张（balanced_test_13x5）
 
+在 65 张完整 quick-test 上，`hog_then_torchvision + local_qwen` 的结果为：
+
 - parse success rate: `65 / 65 = 100%`
-- precision: `1.000`
-- recall: `0.231`
-- F1: `0.375`
-- FP: `0`
-- negative hit rate: `0.365`
-- unknown rate: `0.662`
+- precision: `0.917`
+- recall: `0.846`
+- F1: `0.880`
+- TP: `11`
+- FP: `1`
+- FN: `2`
+- negative hit rate: `0.385`
+- unknown rate: `0.508`
 
 bucket 命中率：
 
 - clean: `0.231`
-- rule1: `0.231`
+- rule1: `0.846`
 - rule2: `0.462`
 - rule3: `0.308`
-- rule4: `0.462`
+- rule4: `0.538`
+
+和 detector 改进前的 local Qwen 65 张结果相比：
+
+- recall：`0.231 -> 0.846`
+- F1：`0.375 -> 0.880`
+- unknown rate：`0.662 -> 0.508`
+- `person_detection` unknown：`34 -> 7`
 
 这组 65 张结果最重要的现象是：
 
-1. **没有出现跨规则误报**
-   - clean / rule2 / rule3 / rule4 上都没有 `violation` 误报
-2. **precision = 1.0 不代表 detector 已经成熟**
-   - 它只是说明当前系统只在 3 张图上真正报出 `violation`，且这 3 张都报对了
-   - 同时还有 `43 / 65` 张被打成了 `unknown`
-3. **当前最大瓶颈不是 predicate backend，而是 detector recall**
-   - 65 张里最主要的 unknown 来源是 `person_detection`
-   - Rule 1 的 10 个漏检正例全部落在 `unknown(person_detection)`
+1. **Rule 1 recall 出现了质变**
+   - 从 `3 / 13` 提升到 `11 / 13`
+2. **只引入了 1 个额外误报**
+   - FP 落在 `rule4` bucket
+   - precision 仍保持在 `0.917`
+3. **detector 才是此前的主瓶颈**
+   - fallback 打通后，大量原本的 `unknown(person_detection)` 被转成了可判别候选
+4. **系统瓶颈已经从 detector 转向局部可见性**
+   - 当前更常见的 unknown 已逐步转成 `toe_covered` / `lower_body_covered` / `hard_hat_visible`
 
-换句话说，这组结果的真正含义是：
+换句话说，这组结果的真正含义已经从：
 
-> local Qwen predicate + gate + executor 这条链已经能把 Rule 1 的误报压得很干净，但系统仍然大量卡在“没有找到可检查的人”这一步。
+> “predicate 很稳，但 detector 找不到人”
+
+变成了：
+
+> detector recall 被明显修复后，local Qwen predicate + gate + executor 已经能够在 Rule 1 上给出较强的阶段性结果。
 
 ### 8.3 当前结论
 
-Rule 1 主方法当前已经具备一个明确的阶段性判断：
+Rule 1 主方法当前已经具备一个更清晰的阶段性判断：
 
-1. **predicate backend 已经不是最先要攻的瓶颈**
-2. **candidate generator recall 才是当前第一优先级**
+1. **candidate detector recall 的确是此前的核心瓶颈**
+2. `hog_then_torchvision + local_qwen` 已经是当前最值得继续推进的 Rule 1 路径
 3. 下一步最值得做的是：
-   - 保留现有 gate / executor
-   - 优先提升 person candidate recall
-   - 再重新观察 26/65 的 recall 与 unknown 变化
+   - 保留这条 detector + predicate + executor 主链
+   - 先把这条链扩到 Rule 1 full test
+   - 然后再检查那 1 个 FP 与剩余 2 个 FN
 
 ---
 
@@ -469,16 +489,16 @@ Rule 1 主方法当前已经具备一个明确的阶段性判断：
 
 ## 10. 下一步建议
 
-1. 先针对 Rule 1 的 `person_detection` 瓶颈改 detector，而不是继续先换 predicate 模型
-2. 增加显式 detector 开关，做：
-   - `hog`
-   - `hog_then_torchvision`
-   的并排对照
-3. 在 detector recall 提升后，重新跑：
-   - 26 张 `clean + rule1`
-   - 65 张 `balanced_test_13x5`
-4. 如果 recall 确实提升，再决定是否把新的 detector 路径写成 BML 推荐实验命令
-5. Rule 1 稳定后，再继续进入：
+1. 基于当前最佳路径 `hog_then_torchvision + local_qwen`，补 Rule 1 fulltest 运行与 summary 出口
+2. 在 BML 上跑 Rule 1 full test（3004）
+3. 导出：
+   - Rule 1 fulltest summary
+   - official-style prediction JSON
+4. fulltest 跑完后，再聚焦分析：
+   - 那 1 个 FP
+   - 剩余 2 个 FN
+   - 高频 unknown 项
+5. Rule 1 fulltest 稳定后，再继续进入：
    - Rule 4 pair reasoning
    - edge-related modules
    - Rule 2 / Rule 3

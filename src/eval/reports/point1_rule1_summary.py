@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable
 from pathlib import Path
 
+from benchmark.constructionsite10k.loader import ConstructionSite10kDataset
 from benchmark.constructionsite10k.registry import SplitRegistry
 
 
@@ -155,6 +157,72 @@ def summarize_rule1_bucketed_run(
         },
         "fp_by_bucket": fp_by_bucket,
         "positive_bucket_name": positive_bucket_name,
+    }
+
+
+def summarize_rule1_run_from_dataset(
+    *,
+    output_path: Path,
+    target_parquet_paths: Iterable[Path],
+) -> dict[str, object]:
+    """Summarize a Rule 1 run directly against dataset-backed truth."""
+    dataset = ConstructionSite10kDataset.from_parquet(
+        target_parquet_paths,
+        include_image_bytes=False,
+    )
+    truth = {
+        sample.image_id: bool(sample.violations[1] is not None)
+        for sample in dataset.samples
+    }
+    records = json.loads(output_path.read_text(encoding="utf-8"))
+
+    tp = fp = fn = 0
+    num_parsed = 0
+    state_counts = {"violation": 0, "unknown": 0, "no_violation": 0, "parse_fail": 0}
+    positive_support = sum(truth.values())
+    negative_support = len(truth) - positive_support
+
+    for record in records:
+        image_id = str(record["image_id"])
+        actual_positive = truth[image_id]
+        parsed_output = record.get("parsed_output")
+
+        if parsed_output is None:
+            decision_state = "no_violation"
+            state_counts["parse_fail"] += 1
+        else:
+            num_parsed += 1
+            decision_state = _extract_rule1_decision_state(parsed_output)
+            state_counts[decision_state] = state_counts.get(decision_state, 0) + 1
+
+        predicted_positive = decision_state == "violation"
+        if predicted_positive and actual_positive:
+            tp += 1
+        elif predicted_positive and not actual_positive:
+            fp += 1
+        elif (not predicted_positive) and actual_positive:
+            fn += 1
+
+    precision = _safe_divide(tp, tp + fp)
+    recall = _safe_divide(tp, tp + fn)
+    f1 = _safe_divide(2 * precision * recall, precision + recall)
+
+    return {
+        "rule_id": 1,
+        "truth_source": "dataset",
+        "num_records": len(records),
+        "num_parsed": num_parsed,
+        "parse_success_rate": _safe_divide(num_parsed, len(records)),
+        "rule1_precision": precision,
+        "rule1_recall": recall,
+        "rule1_f1": f1,
+        "rule1_tp": tp,
+        "rule1_fp": fp,
+        "rule1_fn": fn,
+        "state_counts": state_counts,
+        "unknown_rate_overall": _safe_divide(state_counts["unknown"], len(records)),
+        "positive_support": positive_support,
+        "negative_support": negative_support,
     }
 
 

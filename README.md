@@ -478,6 +478,38 @@ python scripts/run_point1_rule1_pipeline.py \
   --output artifacts/point1/rule1-smallloop-localqwen-hybriddet-balanced_test_13x5.json
 ```
 
+如果你想把当前最佳 Rule 1 路径扩到 **full test 3004**，可以直接用：
+
+```bash
+export QWEN3_VL_ROOT=/home/bml/storage/qwen3_models
+
+python scripts/run_point1_rule1_pipeline.py \
+  --fulltest \
+  --target-parquet "${CS10K_ROOT}/test.parquet" \
+  --candidate-backend hog_then_torchvision \
+  --predicate-backend local_qwen \
+  --model-path "${QWEN3_VL_ROOT}" \
+  --output artifacts/point1/rule1-smallloop-localqwen-hybriddet-fulltest.json \
+  --summary-output artifacts/point1/rule1-smallloop-localqwen-hybriddet-fulltest.summary.json
+```
+
+这里的 `summary.json` 是 Rule 1 专用 fulltest summary，关注：
+
+- `rule1_precision / recall / f1`
+- `rule1_tp / fp / fn`
+- `positive_support / negative_support`
+- `unknown_rate_overall`
+
+如果你还要继续导出 official-style 预测文件，可以接着运行：
+
+```bash
+python scripts/run_point1_eval.py \
+  --baseline-output artifacts/point1/rule1-smallloop-localqwen-hybriddet-fulltest.json \
+  --official-output artifacts/point1/rule1-smallloop-localqwen-hybriddet-fulltest.official.json \
+  --target-parquet "${CS10K_ROOT}/test.parquet" \
+  --summary-output artifacts/point1/rule1-smallloop-localqwen-hybriddet-fulltest.eval-summary.json
+```
+
 如果你还想导出官方风格预测文件，可以继续运行：
 
 ```bash
