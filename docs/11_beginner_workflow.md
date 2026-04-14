@@ -68,6 +68,31 @@ python scripts/dev.py test
 4. 尽量不引入花哨框架；
 5. 能写简单版，就不写复杂版。
 
+## BML 数据路径约定
+
+如果你是在 BML 上跑数据相关脚本，先执行：
+
+```bash
+export CS10K_ROOT=/home/bml/storage/constructionsite10k
+```
+
+后面的 parquet 示例都默认从这个目录读取。
+
+## BML 模型接入约定
+
+如果你是在 BML 上推进 Point 1，默认先执行：
+
+```bash
+export QWEN3_VL_ROOT=/home/bml/storage/qwen3_models
+```
+
+并优先采用：
+
+- 本地 Qwen baseline
+- Rule 1 的 `local_qwen` predicate backend
+
+尽量不要把 BML 端的日常实验默认建立在远端 ModelScope 配额上。
+
 ## 你后续最常见的两种操作
 
 ### 1. 做完改动后检查项目
@@ -82,8 +107,8 @@ python scripts/dev.py all
 ```bash
 conda activate graduation-project
 python scripts/build_balanced_subset_registry.py \
-  train-00001-of-00002.parquet \
-  train-00002-of-00002.parquet \
+  "${CS10K_ROOT}/train-00001-of-00002.parquet" \
+  "${CS10K_ROOT}/train-00002-of-00002.parquet" \
   --subset-name balanced_dev_15x5 \
   --output src/benchmark/splits/constructionsite10k_balanced_dev_15x5.json
 ```

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import io
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal
 
 from benchmark.constructionsite10k.types import ConstructionSiteSample
@@ -33,6 +33,22 @@ class Rule1PredicateSet:
     upper_body_covered: Rule1PredicateResult
     lower_body_covered: Rule1PredicateResult
     toe_covered: Rule1PredicateResult
+    ppe_applicable: Rule1PredicateResult = field(
+        default_factory=lambda: Rule1PredicateResult(
+            state="yes",
+            score=1.0,
+            reason="Default Rule 1 path assumes the visible worker is on foot.",
+            evidence_bbox=None,
+        )
+    )
+    head_region_visible: Rule1PredicateResult = field(
+        default_factory=lambda: Rule1PredicateResult(
+            state="yes",
+            score=1.0,
+            reason="Default Rule 1 path assumes the head region is visible.",
+            evidence_bbox=None,
+        )
+    )
 
 
 class HeuristicRule1PredicateExtractor:
@@ -73,6 +89,8 @@ class HeuristicRule1PredicateExtractor:
             return Rule1PredicateSet(
                 candidate_id=candidate.candidate_id,
                 person_visible=person_visible,
+                ppe_applicable=unknown_predicate,
+                head_region_visible=unknown_predicate,
                 hard_hat_visible=unknown_predicate,
                 upper_body_covered=unknown_predicate,
                 lower_body_covered=unknown_predicate,
@@ -92,6 +110,18 @@ class HeuristicRule1PredicateExtractor:
         return Rule1PredicateSet(
             candidate_id=candidate.candidate_id,
             person_visible=person_visible,
+            ppe_applicable=Rule1PredicateResult(
+                state="yes",
+                score=person_visible.score,
+                reason="The visible person candidate is treated as an on-foot Rule 1 subject.",
+                evidence_bbox=candidate.bbox,
+            ),
+            head_region_visible=Rule1PredicateResult(
+                state="yes",
+                score=person_visible.score,
+                reason="The person crop is large enough to inspect the head region.",
+                evidence_bbox=candidate.bbox,
+            ),
             hard_hat_visible=self._build_hard_hat_result(candidate, hard_hat_ratio),
             upper_body_covered=self._build_body_coverage_result(
                 candidate,
