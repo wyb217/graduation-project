@@ -160,6 +160,17 @@
 - 先在 26 张 `clean + rule1` 上验证 gate 是否不把结果做坏
 - 再在 65 张 `balanced_test_13x5` 上看 cross-rule false positives 是否下降
 
+当前已经拿到的 BML local Qwen 结果说明：
+
+- Rule 1 在 26/65 上都可以做到 `fp = 0`
+- 但 recall 仍停留在 `3 / 13 = 0.231`
+- 主要瓶颈不是 local Qwen predicate，而是大量样本直接落入 `unknown(person_detection)`
+
+因此当前 Rule 1 的最直接改进方向已经从“继续换 predicate backend”收敛为：
+
+- **优先提升 candidate detector recall**
+- 保留现有 gate / executor / explanation 不变
+
 ## parquet 数据支持
 
 当前 benchmark 层已经支持直接读取 ConstructionSite10k 的 parquet 文件。
@@ -208,7 +219,11 @@
 
 ## 下一阶段建议
 
-1. 先在 `balanced_test_13x5_clean + balanced_test_13x5_rule1` 上跑通 Rule 1 小闭环并记录结果；
-2. 再把 Rule 1 扩到 `balanced_test_13x5` 全 65 张，观察其它规则样本上的负例压力；
-3. 进入 Rule 4 pair reasoning 与 edge-related modules；
-4. 继续补强 stratified metrics、error analysis 与 failure export。
+1. 把这次 local Qwen 26/65 结果作为 Rule 1 当前阶段性基线记录下来；
+2. 先改 detector，而不是继续优先改 predicate backend；
+3. 增加显式 detector 开关，先做 `hog_then_torchvision` 这类高召回 fallback；
+4. 重新跑：
+   - `balanced_test_13x5_clean + balanced_test_13x5_rule1`
+   - `balanced_test_13x5`
+5. 如果 detector recall 明显改善，再继续进入 Rule 4 pair reasoning 与 edge-related modules；
+6. 持续补强 stratified metrics、error analysis 与 failure export。

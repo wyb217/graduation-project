@@ -15,6 +15,7 @@ from eval.reports.point1_rule1_summary import (
 )
 from point1.baselines import OpenAICompatibleVisionClient, load_provider_catalog
 from point1.baselines.local_qwen import LocalQwen3VLClient, LocalQwenLoadConfig
+from point1.candidates import HogThenTorchvisionPersonCandidateGenerator
 from point1.pipelines import run_rule1_pipeline
 from point1.pipelines.rule1 import Rule1Pipeline
 from point1.predicates import LocalQwenRule1PredicateExtractor, VLMRule1PredicateExtractor
@@ -51,6 +52,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="Explicit positive Rule 1 split name. Required for multi-bucket runs with 3+ splits.",
     )
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument(
+        "--candidate-backend",
+        choices=("hog", "hog_then_torchvision"),
+        default="hog",
+        help="Candidate generator backend for Rule 1.",
+    )
+    parser.add_argument(
+        "--torchvision-score-threshold",
+        type=float,
+        default=0.3,
+        help="Score threshold for the torchvision fallback detector.",
+    )
     parser.add_argument(
         "--predicate-backend",
         choices=("heuristic", "vlm", "local_qwen"),
@@ -196,8 +209,13 @@ def _merge_split_image_ids(
 def _build_rule1_runtime(
     args: argparse.Namespace,
 ) -> tuple[Rule1Pipeline | None, str, str, str]:
-    if args.predicate_backend == "heuristic":
+    candidate_generator = _build_candidate_generator(args)
+
+    if args.predicate_backend == "heuristic" and candidate_generator is None:
         return None, "rule1_pipeline", "opencv_hog+heuristic_rule1", "rule1_smallloop"
+    if args.predicate_backend == "heuristic":
+        pipeline = Rule1Pipeline(candidate_generator=candidate_generator)
+        return pipeline, "rule1_pipeline", "opencv_hog+heuristic_rule1", "rule1_smallloop"
 
     if args.predicate_backend == "vlm":
         provider_catalog = load_provider_catalog(args.config_path)
@@ -209,7 +227,10 @@ def _build_rule1_runtime(
             model_name=model_name,
             provider_name=provider.name,
         )
-        pipeline = Rule1Pipeline(predicate_extractor=predicate_extractor)
+        pipeline = Rule1Pipeline(
+            candidate_generator=candidate_generator,
+            predicate_extractor=predicate_extractor,
+        )
         return (
             pipeline,
             f"rule1_pipeline_{provider.name}",
@@ -232,12 +253,23 @@ def _build_rule1_runtime(
         client=client,
         model_name=args.model_path,
     )
-    pipeline = Rule1Pipeline(predicate_extractor=predicate_extractor)
+    pipeline = Rule1Pipeline(
+        candidate_generator=candidate_generator,
+        predicate_extractor=predicate_extractor,
+    )
     return (
         pipeline,
         "rule1_pipeline_local_qwen",
         args.model_path,
         "rule1_smallloop_local_qwen",
+    )
+
+
+def _build_candidate_generator(args: argparse.Namespace):
+    if args.candidate_backend == "hog":
+        return None
+    return HogThenTorchvisionPersonCandidateGenerator(
+        score_threshold=args.torchvision_score_threshold,
     )
 
 

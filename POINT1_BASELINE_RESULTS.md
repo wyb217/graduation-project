@@ -351,7 +351,85 @@ baseline 稳定性都会明显下降。
 
 ---
 
-## 8. 当前评测出口状态
+## 8. Rule 1 主方法阶段结果：BML Local Qwen predicate
+
+除了 black-box baseline 之外，当前仓库还额外补跑了 Rule 1 的主方法小闭环：
+
+`candidate -> predicate -> executor -> explanation`
+
+这里的 predicate backend 使用的是：
+
+- **BML 本地 Qwen3-VL**
+
+说明：
+
+- candidate generation 当前仍是显式前端 detector；
+- predicate extraction 改成对 person crop 做 local Qwen 判别；
+- executor / explanation 仍保持显式规则层；
+- 这组结果更适合作为 **Point 1 主方法阶段性结果**，而不是替代前面的 black-box baseline 主表。
+
+### 8.1 26 张（clean + rule1）
+
+- parse success rate: `26 / 26 = 100%`
+- precision: `1.000`
+- recall: `0.231`
+- F1: `0.375`
+- FP: `0`
+- unknown rate: `0.769`
+
+与已有结果相比：
+
+- 明显优于 heuristic 版（F1 `0.211 -> 0.375`）
+- 与 gated ModelScope VLM 26 张结果持平
+- 这说明当前 gate + executor 逻辑已经能把误报压到 0，但 recall 仍偏低
+
+### 8.2 65 张（balanced_test_13x5）
+
+- parse success rate: `65 / 65 = 100%`
+- precision: `1.000`
+- recall: `0.231`
+- F1: `0.375`
+- FP: `0`
+- negative hit rate: `0.365`
+- unknown rate: `0.662`
+
+bucket 命中率：
+
+- clean: `0.231`
+- rule1: `0.231`
+- rule2: `0.462`
+- rule3: `0.308`
+- rule4: `0.462`
+
+这组 65 张结果最重要的现象是：
+
+1. **没有出现跨规则误报**
+   - clean / rule2 / rule3 / rule4 上都没有 `violation` 误报
+2. **precision = 1.0 不代表 detector 已经成熟**
+   - 它只是说明当前系统只在 3 张图上真正报出 `violation`，且这 3 张都报对了
+   - 同时还有 `43 / 65` 张被打成了 `unknown`
+3. **当前最大瓶颈不是 predicate backend，而是 detector recall**
+   - 65 张里最主要的 unknown 来源是 `person_detection`
+   - Rule 1 的 10 个漏检正例全部落在 `unknown(person_detection)`
+
+换句话说，这组结果的真正含义是：
+
+> local Qwen predicate + gate + executor 这条链已经能把 Rule 1 的误报压得很干净，但系统仍然大量卡在“没有找到可检查的人”这一步。
+
+### 8.3 当前结论
+
+Rule 1 主方法当前已经具备一个明确的阶段性判断：
+
+1. **predicate backend 已经不是最先要攻的瓶颈**
+2. **candidate generator recall 才是当前第一优先级**
+3. 下一步最值得做的是：
+   - 保留现有 gate / executor
+   - 优先提升 person candidate recall
+   - 再重新观察 26/65 的 recall 与 unknown 变化
+
+---
+
+## 9. 当前评测出口状态
 
 当前仓库已经具备两层结果消费能力：
 
@@ -389,18 +467,25 @@ baseline 稳定性都会明显下降。
 
 ---
 
-## 9. 下一步建议
+## 10. 下一步建议
 
-1. 将这组 full test 结果整理为论文主表候选版本，并补充正式表题/图注
-2. 专门分析 Rule 4 在 direct / 5-shot 下 precision 极低的原因
-3. 用新的 official eval bridge，把现有 baseline 统一导出成官方风格预测文件
-4. 明确记录哪些结果用于论文主表，哪些结果只作为 error analysis
-5. 在 baseline 口径稳定后，再进入 Point 1 主方法第一条真实链路：
-   - Rule 1 `candidate -> predicate -> executor -> explanation`
+1. 先针对 Rule 1 的 `person_detection` 瓶颈改 detector，而不是继续先换 predicate 模型
+2. 增加显式 detector 开关，做：
+   - `hog`
+   - `hog_then_torchvision`
+   的并排对照
+3. 在 detector recall 提升后，重新跑：
+   - 26 张 `clean + rule1`
+   - 65 张 `balanced_test_13x5`
+4. 如果 recall 确实提升，再决定是否把新的 detector 路径写成 BML 推荐实验命令
+5. Rule 1 稳定后，再继续进入：
+   - Rule 4 pair reasoning
+   - edge-related modules
+   - Rule 2 / Rule 3
 
 ---
 
-## 10. 当前建议保留的核心结果文件
+## 11. 当前建议保留的核心结果文件
 
 建议保留：
 
@@ -428,6 +513,10 @@ baseline 稳定性都会明显下降。
 - `artifacts/point1/localqwen-cls-comparison.json`
 - `artifacts/point1/localqwen-authorvqa-fulltest-comparison.json`
 - `artifacts/point1/localqwen-structured-comparison.json`
+- `artifacts/point1/rule1-smallloop-localqwen-balanced_test_clean_rule1.json`
+- `artifacts/point1/rule1-smallloop-localqwen-balanced_test_clean_rule1.summary.json`
+- `artifacts/point1/rule1-smallloop-localqwen-balanced_test_13x5.json`
+- `artifacts/point1/rule1-smallloop-localqwen-balanced_test_13x5.summary.json`
 
 如果后续开始统一导出官方风格预测文件，建议并列保留：
 

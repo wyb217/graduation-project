@@ -2,9 +2,17 @@
 
 from __future__ import annotations
 
+import io
+
 import pytest
 
-from point1.candidates.person import pixel_xyxy_to_normalized_bbox
+from common.schemas.bbox import NormalizedBBox
+from point1.candidates.person import (
+    HogThenTorchvisionPersonCandidateGenerator,
+    PersonCandidate,
+    TorchvisionPersonCandidateGenerator,
+    pixel_xyxy_to_normalized_bbox,
+)
 
 
 def test_pixel_xyxy_to_normalized_bbox_converts_coordinates() -> None:
@@ -32,3 +40,114 @@ def test_pixel_xyxy_to_normalized_bbox_rejects_non_positive_image_size() -> None
             image_width=0,
             image_height=400,
         )
+
+
+def _valid_png_bytes() -> bytes:
+    from PIL import Image
+
+    image = Image.new("RGB", (200, 400), color=(240, 200, 0))
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+def test_torchvision_person_candidate_generator_filters_to_people_and_min_size(
+    sample_annotation: dict[str, object],
+) -> None:
+    """Torchvision fallback should keep only person detections above score/size thresholds."""
+    from benchmark.constructionsite10k.parser import parse_sample
+
+    sample = parse_sample(
+        {
+            **sample_annotation,
+            "image": {"bytes": _valid_png_bytes(), "path": "demo.png"},
+        }
+    )
+
+    class FakeDetector:
+        def __call__(self, images):  # noqa: ANN001
+            assert len(images) == 1
+            return [
+                {
+                    "boxes": [
+                        [10.0, 20.0, 90.0, 220.0],  # valid person
+                        [5.0, 5.0, 20.0, 40.0],  # too small
+                        [30.0, 40.0, 130.0, 260.0],  # wrong label
+                        [40.0, 50.0, 120.0, 240.0],  # low score
+                    ],
+                    "labels": [1, 1, 3, 1],
+                    "scores": [0.95, 0.99, 0.97, 0.1],
+                }
+            ]
+
+    generator = TorchvisionPersonCandidateGenerator(
+        person_detector=FakeDetector(),
+        score_threshold=0.3,
+        min_width=24,
+        min_height=48,
+    )
+
+    candidates = generator.generate(sample)
+
+    assert candidates == (
+        PersonCandidate(
+            candidate_id="person-1",
+            bbox=NormalizedBBox(0.05, 0.05, 0.45, 0.55),
+            score=0.95,
+        ),
+    )
+
+
+def test_hog_then_torchvision_generator_skips_fallback_when_hog_finds_candidates() -> None:
+    """Hybrid detector should preserve the HOG path when it already finds a person."""
+
+    class FakePrimary:
+        def generate(self, sample):  # noqa: ANN001
+            return (PersonCandidate("person-1", NormalizedBBox(0.1, 0.2, 0.3, 0.6), 0.9),)
+
+    class FakeFallback:
+        def __init__(self) -> None:
+            self.called = False
+
+        def generate(self, sample):  # noqa: ANN001
+            self.called = True
+            return ()
+
+    fallback = FakeFallback()
+    generator = HogThenTorchvisionPersonCandidateGenerator(
+        primary_generator=FakePrimary(),
+        fallback_generator=fallback,
+    )
+
+    candidates = generator.generate(sample=None)
+
+    assert len(candidates) == 1
+    assert fallback.called is False
+
+
+def test_hog_then_torchvision_generator_uses_fallback_when_hog_finds_nothing() -> None:
+    """Hybrid detector should fall back to torchvision when HOG returns zero candidates."""
+
+    class FakePrimary:
+        def generate(self, sample):  # noqa: ANN001
+            return ()
+
+    class FakeFallback:
+        def __init__(self) -> None:
+            self.called = False
+
+        def generate(self, sample):  # noqa: ANN001
+            self.called = True
+            return (PersonCandidate("person-2", NormalizedBBox(0.2, 0.2, 0.4, 0.7), 0.8),)
+
+    fallback = FakeFallback()
+    generator = HogThenTorchvisionPersonCandidateGenerator(
+        primary_generator=FakePrimary(),
+        fallback_generator=fallback,
+    )
+
+    candidates = generator.generate(sample=None)
+
+    assert len(candidates) == 1
+    assert candidates[0].candidate_id == "person-2"
+    assert fallback.called is True
