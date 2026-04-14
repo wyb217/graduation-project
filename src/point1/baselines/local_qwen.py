@@ -47,7 +47,6 @@ class LocalQwen3VLClient:
         prompt_style: str = "default",
     ) -> str:
         """Run one local Qwen3-VL generation and return the raw text output."""
-        self._ensure_loaded()
         messages = self._build_qwen_messages(
             target_sample=target_sample,
             mode=mode,
@@ -55,6 +54,11 @@ class LocalQwen3VLClient:
             task_profile=task_profile,
             prompt_style=prompt_style,
         )
+        return self.complete(messages=messages)
+
+    def complete(self, *, messages: list[dict[str, Any]]) -> str:
+        """Run one local Qwen3-VL generation from pre-built chat messages."""
+        self._ensure_loaded()
         inputs = self._processor.apply_chat_template(
             messages,
             tokenize=True,

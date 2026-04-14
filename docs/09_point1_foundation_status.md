@@ -20,7 +20,11 @@
 
 ## 当前代码边界
 
-- Point 1 仍未接入任何 VLM、外部 API、RAG、LoRA、QLoRA；
+- Point 1 已接入：
+  - black-box API baseline
+  - BML 本地 Qwen baseline
+  - Rule 1 的本地 / 远端 VLM predicate 后端
+- Point 1 仍明确禁止：RAG、LoRA、QLoRA；
 - Point 2 仅保留目录边界，不含实现；
 - Point 3 仅保留系统层占位目录。
 
@@ -63,10 +67,22 @@
 - predicate extraction：OpenAI-compatible VLM over person crop
 - executor / explanation：保持不变
 
+现在还额外支持：
+
+- candidate generation：OpenCV HOG
+- predicate extraction：BML 本地 Qwen3-VL over person crop
+- executor / explanation：保持不变
+
+当前 BML 侧的推荐默认接入方式是：
+
+- **优先使用本地 Qwen3-VL**
+- 远端 ModelScope / OpenAI-compatible provider 主要保留为对照组或补充实验
+
 也就是说，Rule 1 当前已经可以比较：
 
 1. `candidate -> heuristic predicates -> executor -> explanation`
 2. `candidate -> VLM predicates -> executor -> explanation`
+3. `candidate -> local Qwen predicates -> executor -> explanation`
 
 当前 VLM predicate 版内部已经加入两个精度 gate：
 

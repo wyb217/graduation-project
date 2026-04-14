@@ -45,6 +45,38 @@ pip install git+https://github.com/huggingface/transformers
 
 如果你的 CUDA 版本不是 12.4，需要把上面的 PyTorch 源地址换成对应版本。
 
+## BML 数据路径约定
+
+如果你是在 BML 平台跑本地 Qwen baseline，请默认把数据根目录设为：
+
+- `/home/bml/storage/constructionsite10k`
+
+推荐先执行：
+
+```bash
+export CS10K_ROOT=/home/bml/storage/constructionsite10k
+```
+
+下面所有 parquet 相关命令都按这个路径约定书写。
+
+## BML 本地模型路径约定
+
+如果你是在 BML 平台运行本地 Qwen，请默认把模型目录设为：
+
+- `/home/bml/storage/qwen3_models`
+
+推荐先执行：
+
+```bash
+export QWEN3_VL_ROOT=/home/bml/storage/qwen3_models
+```
+
+当前 BML 侧 Point 1 的默认建议是：
+
+- baseline 优先跑本地 Qwen；
+- Rule 1 predicate backend 优先使用 `local_qwen`；
+- 远端 ModelScope 只作为对照，不作为默认执行路径。
+
 ## 下载模型
 
 你可以把模型下载到任意本地目录，例如：
@@ -63,7 +95,7 @@ python scripts/run_point1_local_qwen_baseline.py \
   --model-path /home/bml/storage/qwen3_models \
   --mode direct \
   --task-profile structured \
-  --target-parquet test.parquet \
+  --target-parquet "${CS10K_ROOT}/test.parquet" \
   --target-registry src/benchmark/splits/constructionsite10k_balanced_test_13x5.json \
   --target-split balanced_test_13x5 \
   --output artifacts/point1/direct-localqwen-balanced_test_13x5.json
@@ -90,7 +122,7 @@ python scripts/run_point1_local_qwen_baseline.py \
   --model-path /home/bml/storage/qwen3_models \
   --mode direct \
   --task-profile classification_only \
-  --target-parquet test.parquet \
+  --target-parquet "${CS10K_ROOT}/test.parquet" \
   --target-registry src/benchmark/splits/constructionsite10k_balanced_test_13x5.json \
   --target-split balanced_test_13x5 \
   --output artifacts/point1/directcls-localqwen-balanced_test_13x5.json
@@ -104,10 +136,10 @@ python scripts/run_point1_local_qwen_baseline.py \
   --model-path /home/bml/storage/qwen3_models \
   --mode five_shot \
   --task-profile classification_only \
-  --target-parquet test.parquet \
+  --target-parquet "${CS10K_ROOT}/test.parquet" \
   --target-registry src/benchmark/splits/constructionsite10k_balanced_test_13x5.json \
   --target-split balanced_test_13x5 \
-  --few-shot-parquet train-00001-of-00002.parquet train-00002-of-00002.parquet \
+  --few-shot-parquet "${CS10K_ROOT}/train-00001-of-00002.parquet" "${CS10K_ROOT}/train-00002-of-00002.parquet" \
   --few-shot-registry src/benchmark/splits/constructionsite10k_balanced_dev_15x5.json \
   --few-shot-split balanced_dev_15x5 \
   --output artifacts/point1/fiveshotcls-localqwen-balanced_test_13x5.json
@@ -121,7 +153,7 @@ python scripts/run_point1_local_qwen_baseline.py \
   --model-path /home/bml/storage/qwen3_models \
   --mode direct \
   --task-profile structured \
-  --target-parquet test.parquet \
+  --target-parquet "${CS10K_ROOT}/test.parquet" \
   --target-registry src/benchmark/splits/constructionsite10k_balanced_test_13x5.json \
   --target-split balanced_test_13x5 \
   --output artifacts/point1/direct-localqwen-balanced_test_13x5.json
@@ -135,10 +167,10 @@ python scripts/run_point1_local_qwen_baseline.py \
   --model-path /home/bml/storage/qwen3_models \
   --mode five_shot \
   --task-profile structured \
-  --target-parquet test.parquet \
+  --target-parquet "${CS10K_ROOT}/test.parquet" \
   --target-registry src/benchmark/splits/constructionsite10k_balanced_test_13x5.json \
   --target-split balanced_test_13x5 \
-  --few-shot-parquet train-00001-of-00002.parquet train-00002-of-00002.parquet \
+  --few-shot-parquet "${CS10K_ROOT}/train-00001-of-00002.parquet" "${CS10K_ROOT}/train-00002-of-00002.parquet" \
   --few-shot-registry src/benchmark/splits/constructionsite10k_balanced_dev_15x5.json \
   --few-shot-split balanced_dev_15x5 \
   --output artifacts/point1/fiveshot-localqwen-balanced_test_13x5.json
@@ -159,7 +191,7 @@ python scripts/run_point1_local_qwen_baseline.py \
   --model-path /home/bml/storage/qwen3_models \
   --mode direct \
   --task-profile classification_only \
-  --target-parquet test.parquet \
+  --target-parquet "${CS10K_ROOT}/test.parquet" \
   --target-registry src/benchmark/splits/constructionsite10k_balanced_test_13x5.json \
   --target-split balanced_test_13x5 \
   --limit 5 \
@@ -229,7 +261,7 @@ python scripts/run_point1_local_qwen_baseline.py \
   --mode direct \
   --prompt-style author_vqa \
   --task-profile structured \
-  --target-parquet test.parquet \
+  --target-parquet "${CS10K_ROOT}/test.parquet" \
   --output artifacts/point1/direct-localqwen-authorvqa-fulltest.json
 ```
 
@@ -242,8 +274,8 @@ python scripts/run_point1_local_qwen_baseline.py \
   --mode five_shot \
   --prompt-style author_vqa \
   --task-profile structured \
-  --target-parquet test.parquet \
-  --few-shot-parquet train-00001-of-00002.parquet train-00002-of-00002.parquet \
+  --target-parquet "${CS10K_ROOT}/test.parquet" \
+  --few-shot-parquet "${CS10K_ROOT}/train-00001-of-00002.parquet" "${CS10K_ROOT}/train-00002-of-00002.parquet" \
   --few-shot-example-profile author_train_mimic \
   --output artifacts/point1/fiveshot-localqwen-authorvqa-fulltest.json
 ```
@@ -255,7 +287,7 @@ conda activate graduation-project
 python scripts/analyze_point1_baselines.py \
   --direct-output artifacts/point1/direct-localqwen-authorvqa-fulltest.json \
   --few-shot-output artifacts/point1/fiveshot-localqwen-authorvqa-fulltest.json \
-  --target-parquet test.parquet \
+  --target-parquet "${CS10K_ROOT}/test.parquet" \
   --output artifacts/point1/localqwen-authorvqa-fulltest-comparison.json
 ```
 

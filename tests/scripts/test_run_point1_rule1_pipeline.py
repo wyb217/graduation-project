@@ -287,6 +287,130 @@ def test_run_point1_rule1_pipeline_builds_vlm_backend_when_requested(
     assert built["run_kwargs"]["provider_name"] == "rule1_pipeline_modelscope"
 
 
+def test_run_point1_rule1_pipeline_builds_local_qwen_backend_when_requested(
+    tmp_path: Path,
+) -> None:
+    """The script should wire local Qwen predicate extraction on demand."""
+    module = _load_rule1_module()
+    dataset_path = tmp_path / "target.parquet"
+    registry_path = tmp_path / "registry.json"
+    output_path = tmp_path / "rule1.json"
+
+    pq.write_table(
+        pa.Table.from_pylist(
+            [
+                {
+                    "image_id": "clean-1",
+                    "image": {"bytes": b"fake-image-clean", "path": "clean.jpg"},
+                    "image_caption": "clean sample",
+                    "illumination": "day",
+                    "camera_distance": "mid",
+                    "view": "front",
+                    "quality_of_info": "rich",
+                    "rule_1_violation": None,
+                    "rule_2_violation": None,
+                    "rule_3_violation": None,
+                    "rule_4_violation": None,
+                },
+                {
+                    "image_id": "rule1-1",
+                    "image": {"bytes": b"fake-image-rule1", "path": "rule1.jpg"},
+                    "image_caption": "rule1 sample",
+                    "illumination": "day",
+                    "camera_distance": "mid",
+                    "view": "front",
+                    "quality_of_info": "rich",
+                    "rule_1_violation": {"bounding_box": [[0.1, 0.2, 0.3, 0.4]], "reason": "r1"},
+                    "rule_2_violation": None,
+                    "rule_3_violation": None,
+                    "rule_4_violation": None,
+                },
+            ]
+        ),
+        dataset_path,
+    )
+    write_json(
+        registry_path,
+        {
+            "demo_clean": ["clean-1"],
+            "demo_rule1": ["rule1-1"],
+        },
+    )
+
+    built: dict[str, object] = {}
+
+    class FakeLoadConfig:
+        def __init__(self, **kwargs) -> None:  # noqa: ANN003
+            built["load_config_kwargs"] = kwargs
+
+    class FakeClient:
+        def __init__(self, config) -> None:  # noqa: ANN001
+            built["client_config"] = config
+
+    class FakeExtractor:
+        def __init__(self, **kwargs) -> None:  # noqa: ANN003
+            built["extractor_kwargs"] = kwargs
+
+    class FakePipeline:
+        def __init__(self, **kwargs) -> None:  # noqa: ANN003
+            built["pipeline_kwargs"] = kwargs
+
+    def fake_run_rule1_pipeline(  # noqa: ANN001
+        *,
+        target_samples,
+        pipeline=None,
+        show_progress=False,
+        **kwargs,
+    ):
+        built["run_pipeline_type"] = type(pipeline).__name__
+        built["run_kwargs"] = kwargs
+        return []
+
+    module.LocalQwenLoadConfig = FakeLoadConfig
+    module.LocalQwen3VLClient = FakeClient
+    module.LocalQwenRule1PredicateExtractor = FakeExtractor
+    module.Rule1Pipeline = FakePipeline
+    module.run_rule1_pipeline = fake_run_rule1_pipeline
+
+    argv = sys.argv
+    try:
+        sys.argv = [
+            "run_point1_rule1_pipeline.py",
+            "--target-parquet",
+            str(dataset_path),
+            "--registry",
+            str(registry_path),
+            "--target-split-names",
+            "demo_clean",
+            "demo_rule1",
+            "--predicate-backend",
+            "local_qwen",
+            "--model-path",
+            "/models/qwen3-vl",
+            "--torch-dtype",
+            "bfloat16",
+            "--max-new-tokens",
+            "256",
+            "--attn-implementation",
+            "flash_attention_2",
+            "--output",
+            str(output_path),
+        ]
+        module.main()
+    finally:
+        sys.argv = argv
+
+    assert built["load_config_kwargs"] == {
+        "model_path": "/models/qwen3-vl",
+        "torch_dtype": "bfloat16",
+        "max_new_tokens": 256,
+        "attn_implementation": "flash_attention_2",
+    }
+    assert built["run_pipeline_type"] == "FakePipeline"
+    assert built["run_kwargs"]["provider_name"] == "rule1_pipeline_local_qwen"
+    assert built["run_kwargs"]["model_name"] == "/models/qwen3-vl"
+
+
 def test_run_point1_rule1_pipeline_supports_bucketed_summary_with_explicit_positive_split(
     tmp_path: Path,
 ) -> None:

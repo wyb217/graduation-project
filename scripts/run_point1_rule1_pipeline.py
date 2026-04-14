@@ -14,9 +14,10 @@ from eval.reports.point1_rule1_summary import (
     summarize_rule1_smallloop,
 )
 from point1.baselines import OpenAICompatibleVisionClient, load_provider_catalog
+from point1.baselines.local_qwen import LocalQwen3VLClient, LocalQwenLoadConfig
 from point1.pipelines import run_rule1_pipeline
 from point1.pipelines.rule1 import Rule1Pipeline
-from point1.predicates import VLMRule1PredicateExtractor
+from point1.predicates import LocalQwenRule1PredicateExtractor, VLMRule1PredicateExtractor
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -52,7 +53,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument(
         "--predicate-backend",
-        choices=("heuristic", "vlm"),
+        choices=("heuristic", "vlm", "local_qwen"),
         default="heuristic",
         help="Predicate extractor backend for Rule 1.",
     )
@@ -65,6 +66,27 @@ def build_parser() -> argparse.ArgumentParser:
         "--model",
         default=None,
         help="Optional VLM model override when --predicate-backend=vlm.",
+    )
+    parser.add_argument(
+        "--model-path",
+        default=None,
+        help="Local Qwen model path when --predicate-backend=local_qwen.",
+    )
+    parser.add_argument(
+        "--torch-dtype",
+        default="auto",
+        help="Torch dtype for local Qwen loading when --predicate-backend=local_qwen.",
+    )
+    parser.add_argument(
+        "--max-new-tokens",
+        type=int,
+        default=500,
+        help="Generation cap for local Qwen predicate extraction.",
+    )
+    parser.add_argument(
+        "--attn-implementation",
+        default="sdpa",
+        help="Attention implementation for local Qwen loading.",
     )
     parser.add_argument(
         "--config-path",
@@ -177,21 +199,45 @@ def _build_rule1_runtime(
     if args.predicate_backend == "heuristic":
         return None, "rule1_pipeline", "opencv_hog+heuristic_rule1", "rule1_smallloop"
 
-    provider_catalog = load_provider_catalog(args.config_path)
-    provider = provider_catalog.get_provider(args.provider)
-    model_name = provider.model if args.model is None else args.model
-    client = OpenAICompatibleVisionClient(provider)
-    predicate_extractor = VLMRule1PredicateExtractor(
+    if args.predicate_backend == "vlm":
+        provider_catalog = load_provider_catalog(args.config_path)
+        provider = provider_catalog.get_provider(args.provider)
+        model_name = provider.model if args.model is None else args.model
+        client = OpenAICompatibleVisionClient(provider)
+        predicate_extractor = VLMRule1PredicateExtractor(
+            client=client,
+            model_name=model_name,
+            provider_name=provider.name,
+        )
+        pipeline = Rule1Pipeline(predicate_extractor=predicate_extractor)
+        return (
+            pipeline,
+            f"rule1_pipeline_{provider.name}",
+            model_name,
+            "rule1_smallloop_vlm",
+        )
+
+    if not args.model_path:
+        raise ValueError("--model-path is required when --predicate-backend=local_qwen.")
+
+    client = LocalQwen3VLClient(
+        LocalQwenLoadConfig(
+            model_path=args.model_path,
+            torch_dtype=args.torch_dtype,
+            max_new_tokens=args.max_new_tokens,
+            attn_implementation=args.attn_implementation,
+        )
+    )
+    predicate_extractor = LocalQwenRule1PredicateExtractor(
         client=client,
-        model_name=model_name,
-        provider_name=provider.name,
+        model_name=args.model_path,
     )
     pipeline = Rule1Pipeline(predicate_extractor=predicate_extractor)
     return (
         pipeline,
-        f"rule1_pipeline_{provider.name}",
-        model_name,
-        "rule1_smallloop_vlm",
+        "rule1_pipeline_local_qwen",
+        args.model_path,
+        "rule1_smallloop_local_qwen",
     )
 
 

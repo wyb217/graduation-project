@@ -59,6 +59,41 @@ git pull origin feature/point1-foundation
 
 不要在 BML 上默认把 `origin` 理解成 GitHub。
 
+## BML 平台数据路径约定
+
+如果你是在 **BML 平台** 上运行数据相关脚本，请默认把 ConstructionSite10k 数据根目录设为：
+
+- `/home/bml/storage/constructionsite10k`
+
+推荐先执行：
+
+```bash
+export CS10K_ROOT=/home/bml/storage/constructionsite10k
+```
+
+下面所有涉及 `train-00001-of-00002.parquet`、`train-00002-of-00002.parquet`、`test.parquet` 的命令，
+如果你在 BML 上运行，都优先写成 `${CS10K_ROOT}/...` 的绝对路径。
+
+## BML 平台模型接入约定
+
+如果你是在 **BML 平台** 上推进 Point 1，默认优先使用：
+
+- **本地 Qwen3-VL**
+
+而不是优先占用远端 ModelScope / API 配额。
+
+推荐先执行：
+
+```bash
+export QWEN3_VL_ROOT=/home/bml/storage/qwen3_models
+```
+
+当前在 BML 上的默认建议是：
+
+1. Rule 1 主方法里的 predicate extraction 优先走 `local_qwen`
+2. black-box baseline 优先走 `scripts/run_point1_local_qwen_baseline.py`
+3. 只有在需要做远端 provider 对照时，再使用 `modelscope`
+
 ## 最常用的日常命令
 
 如果你不想记很多命令，直接用：
@@ -147,10 +182,11 @@ from benchmark.constructionsite10k import ConstructionSite10kDataset, SplitRegis
 registry = SplitRegistry.from_json(
     Path("src/benchmark/splits/constructionsite10k_example_registry.json")
 )
+data_root = Path("/home/bml/storage/constructionsite10k")
 dataset = ConstructionSite10kDataset.from_parquet(
     [
-        Path("/Users/wyb/code/graduation-project/train-00001-of-00002.parquet"),
-        Path("/Users/wyb/code/graduation-project/train-00002-of-00002.parquet"),
+        data_root / "train-00001-of-00002.parquet",
+        data_root / "train-00002-of-00002.parquet",
     ],
     registry=registry,
     split_name="train",
@@ -196,8 +232,8 @@ dataset = ConstructionSite10kDataset.from_parquet(
 ```bash
 conda activate graduation-project
 python scripts/build_balanced_subset_registry.py \
-  train-00001-of-00002.parquet \
-  train-00002-of-00002.parquet \
+  "${CS10K_ROOT}/train-00001-of-00002.parquet" \
+  "${CS10K_ROOT}/train-00002-of-00002.parquet" \
   --subset-name balanced_dev_15x5 \
   --output src/benchmark/splits/constructionsite10k_balanced_dev_15x5.json
 ```
@@ -207,7 +243,7 @@ python scripts/build_balanced_subset_registry.py \
 ```bash
 conda activate graduation-project
 python scripts/build_balanced_subset_registry.py \
-  test.parquet \
+  "${CS10K_ROOT}/test.parquet" \
   --subset-name balanced_test_13x5 \
   --per-bucket 13 \
   --output src/benchmark/splits/constructionsite10k_balanced_test_13x5.json
@@ -222,7 +258,7 @@ conda activate graduation-project
 python scripts/run_point1_api_baseline.py \
   --provider modelscope \
   --mode direct \
-  --target-parquet test.parquet \
+  --target-parquet "${CS10K_ROOT}/test.parquet" \
   --target-registry src/benchmark/splits/constructionsite10k_balanced_test_13x5.json \
   --target-split balanced_test_13x5 \
   --output artifacts/point1/direct-modelscope-balanced_test_13x5.json
@@ -235,10 +271,10 @@ conda activate graduation-project
 python scripts/run_point1_api_baseline.py \
   --provider modelscope \
   --mode five_shot \
-  --target-parquet test.parquet \
+  --target-parquet "${CS10K_ROOT}/test.parquet" \
   --target-registry src/benchmark/splits/constructionsite10k_balanced_test_13x5.json \
   --target-split balanced_test_13x5 \
-  --few-shot-parquet train-00001-of-00002.parquet train-00002-of-00002.parquet \
+  --few-shot-parquet "${CS10K_ROOT}/train-00001-of-00002.parquet" "${CS10K_ROOT}/train-00002-of-00002.parquet" \
   --few-shot-registry src/benchmark/splits/constructionsite10k_balanced_dev_15x5.json \
   --few-shot-split balanced_dev_15x5 \
   --output artifacts/point1/fiveshot-modelscope-balanced_test_13x5.json
@@ -275,24 +311,44 @@ python scripts/run_point1_eval.py \
 ```bash
 conda activate graduation-project
 python scripts/run_point1_rule1_pipeline.py \
-  --target-parquet test.parquet \
+  --target-parquet "${CS10K_ROOT}/test.parquet" \
   --registry src/benchmark/splits/constructionsite10k_balanced_test_13x5.json \
   --target-split-names balanced_test_13x5_clean balanced_test_13x5_rule1 \
   --output artifacts/point1/rule1-smallloop-balanced_test_clean_rule1.json
 ```
 
-如果你想把 Rule 1 的谓词提取改成 OpenAI-compatible VLM（例如 ModelScope），可以额外加：
+如果你需要做远端 provider 对照，把 Rule 1 的谓词提取改成 OpenAI-compatible VLM（例如 ModelScope），可以额外加：
 
 ```bash
 conda activate graduation-project
 python scripts/run_point1_rule1_pipeline.py \
-  --target-parquet test.parquet \
+  --target-parquet "${CS10K_ROOT}/test.parquet" \
   --registry src/benchmark/splits/constructionsite10k_balanced_test_13x5.json \
   --target-split-names balanced_test_13x5_clean balanced_test_13x5_rule1 \
   --predicate-backend vlm \
   --provider modelscope \
   --output artifacts/point1/rule1-smallloop-vlm-modelscope-balanced_test_clean_rule1.json
 ```
+
+如果你在 BML 上已经有 **本地 Qwen3-VL 模型**，也可以直接把 Rule 1 的谓词提取改成 `local_qwen`：
+
+```bash
+export QWEN3_VL_ROOT=/home/bml/storage/qwen3_models
+
+python scripts/run_point1_rule1_pipeline.py \
+  --target-parquet "${CS10K_ROOT}/test.parquet" \
+  --registry src/benchmark/splits/constructionsite10k_balanced_test_13x5.json \
+  --target-split-names balanced_test_13x5_clean balanced_test_13x5_rule1 \
+  --predicate-backend local_qwen \
+  --model-path "${QWEN3_VL_ROOT}" \
+  --output artifacts/point1/rule1-smallloop-localqwen-balanced_test_clean_rule1.json
+```
+
+这条本地版路径的目的就是：
+
+- 不占用远端 API / ModelScope 配额；
+- 直接在 BML 上做 `candidate -> local qwen predicate extraction -> executor -> explanation`；
+- 保持 Rule 1 executor / explanation 与远端 VLM 版一致，便于做 apples-to-apples 对比。
 
 当前这条 VLM 版小闭环仍然保留：
 
@@ -339,7 +395,7 @@ executor 会优先使用这两个 gate 压跨规则误报：
 ```bash
 conda activate graduation-project
 python scripts/run_point1_rule1_pipeline.py \
-  --target-parquet test.parquet \
+  --target-parquet "${CS10K_ROOT}/test.parquet" \
   --registry src/benchmark/splits/constructionsite10k_balanced_test_13x5.json \
   --target-split-names \
     balanced_test_13x5_clean \
@@ -359,6 +415,26 @@ python scripts/run_point1_rule1_pipeline.py \
 - `fp_by_bucket`
 - `bucket_hit_rate`
 - `unknown_rate_by_bucket`
+
+如果你想在 BML 上直接跑 **65 张 local Qwen predicate** 版，也可以用：
+
+```bash
+export QWEN3_VL_ROOT=/home/bml/storage/qwen3_models
+
+python scripts/run_point1_rule1_pipeline.py \
+  --target-parquet "${CS10K_ROOT}/test.parquet" \
+  --registry src/benchmark/splits/constructionsite10k_balanced_test_13x5.json \
+  --target-split-names \
+    balanced_test_13x5_clean \
+    balanced_test_13x5_rule2 \
+    balanced_test_13x5_rule3 \
+    balanced_test_13x5_rule4 \
+    balanced_test_13x5_rule1 \
+  --positive-split-name balanced_test_13x5_rule1 \
+  --predicate-backend local_qwen \
+  --model-path "${QWEN3_VL_ROOT}" \
+  --output artifacts/point1/rule1-smallloop-localqwen-balanced_test_13x5.json
+```
 
 如果你还想导出官方风格预测文件，可以继续运行：
 
@@ -381,7 +457,7 @@ python scripts/run_point1_local_qwen_baseline.py \
   --model-path /path/to/Qwen3-VL-8B-Instruct \
   --mode direct \
   --task-profile structured \
-  --target-parquet test.parquet \
+  --target-parquet "${CS10K_ROOT}/test.parquet" \
   --target-registry src/benchmark/splits/constructionsite10k_balanced_test_13x5.json \
   --target-split balanced_test_13x5 \
   --output artifacts/point1/direct-localqwen-balanced_test_13x5.json
@@ -395,10 +471,10 @@ python scripts/run_point1_local_qwen_baseline.py \
   --model-path /path/to/Qwen3-VL-8B-Instruct \
   --mode five_shot \
   --task-profile structured \
-  --target-parquet test.parquet \
+  --target-parquet "${CS10K_ROOT}/test.parquet" \
   --target-registry src/benchmark/splits/constructionsite10k_balanced_test_13x5.json \
   --target-split balanced_test_13x5 \
-  --few-shot-parquet train-00001-of-00002.parquet train-00002-of-00002.parquet \
+  --few-shot-parquet "${CS10K_ROOT}/train-00001-of-00002.parquet" "${CS10K_ROOT}/train-00002-of-00002.parquet" \
   --few-shot-registry src/benchmark/splits/constructionsite10k_balanced_dev_15x5.json \
   --few-shot-split balanced_dev_15x5 \
   --output artifacts/point1/fiveshot-localqwen-balanced_test_13x5.json
@@ -422,7 +498,7 @@ python scripts/run_point1_local_qwen_baseline.py \
   --mode direct \
   --prompt-style author_vqa \
   --task-profile structured \
-  --target-parquet test.parquet \
+  --target-parquet "${CS10K_ROOT}/test.parquet" \
   --output artifacts/point1/direct-localqwen-authorvqa-fulltest.json
 
 python scripts/run_point1_local_qwen_baseline.py \
@@ -430,15 +506,15 @@ python scripts/run_point1_local_qwen_baseline.py \
   --mode five_shot \
   --prompt-style author_vqa \
   --task-profile structured \
-  --target-parquet test.parquet \
-  --few-shot-parquet train-00001-of-00002.parquet train-00002-of-00002.parquet \
+  --target-parquet "${CS10K_ROOT}/test.parquet" \
+  --few-shot-parquet "${CS10K_ROOT}/train-00001-of-00002.parquet" "${CS10K_ROOT}/train-00002-of-00002.parquet" \
   --few-shot-example-profile author_train_mimic \
   --output artifacts/point1/fiveshot-localqwen-authorvqa-fulltest.json
 
 python scripts/analyze_point1_baselines.py \
   --direct-output artifacts/point1/direct-localqwen-authorvqa-fulltest.json \
   --few-shot-output artifacts/point1/fiveshot-localqwen-authorvqa-fulltest.json \
-  --target-parquet test.parquet \
+  --target-parquet "${CS10K_ROOT}/test.parquet" \
   --output artifacts/point1/localqwen-authorvqa-fulltest-comparison.json
 ```
 
