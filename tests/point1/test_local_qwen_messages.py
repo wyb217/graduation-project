@@ -2,8 +2,17 @@
 
 from __future__ import annotations
 
+from base64 import b64decode
+
 from benchmark.constructionsite10k.parser import parse_sample
 from point1.baselines.local_qwen import LocalQwen3VLClient, LocalQwenLoadConfig
+
+
+def _valid_png_bytes() -> bytes:
+    """Return a tiny valid PNG payload for message-construction tests."""
+    return b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aF9sAAAAASUVORK5CYII="
+    )
 
 
 def test_local_qwen_message_builder_supports_five_shot(
@@ -13,7 +22,7 @@ def test_local_qwen_message_builder_supports_five_shot(
     sample = parse_sample(
         {
             **sample_annotation,
-            "image": {"bytes": b"fake-image", "path": "demo.jpg"},
+            "image": {"bytes": _valid_png_bytes(), "path": "demo.png"},
         }
     )
     client = LocalQwen3VLClient(LocalQwenLoadConfig(model_path="demo-model"))
@@ -37,7 +46,7 @@ def test_local_qwen_few_shot_assistant_message_uses_text_blocks(
     sample = parse_sample(
         {
             **sample_annotation,
-            "image": {"bytes": b"fake-image", "path": "demo.jpg"},
+            "image": {"bytes": _valid_png_bytes(), "path": "demo.png"},
         }
     )
     client = LocalQwen3VLClient(LocalQwenLoadConfig(model_path="demo-model"))
@@ -64,7 +73,7 @@ def test_local_qwen_system_message_uses_text_blocks_for_author_vqa(
     sample = parse_sample(
         {
             **sample_annotation,
-            "image": {"bytes": b"fake-image", "path": "demo.jpg"},
+            "image": {"bytes": _valid_png_bytes(), "path": "demo.png"},
         }
     )
     client = LocalQwen3VLClient(LocalQwenLoadConfig(model_path="demo-model"))

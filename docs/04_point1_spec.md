@@ -36,11 +36,14 @@ Point 1 研究：
 ### Rule 1
 - Candidate：person + body part crops
 - Predicates：hard_hat / upper_body_covered / lower_body_covered / toe_covered / visibility
+- 内部门控谓词：`ppe_applicable` / `head_region_visible`
+- multi-rule 说明：Rule 1 与 Rule 2/3/4 可在同一 worker 上共存，`ppe_applicable` 只做
+  candidate-local applicability 判断，不做图像级互斥
 - 主输出：person bbox
 - 当前实现注记：
   - 现阶段仓库已具备 Rule 1 的第一条主方法链路；
   - 当前默认实现是 `candidate + heuristic predicates + symbolic executor`；
-  - 当前输出仍是 per-candidate prediction，尚未完成 image-level aggregation。
+  - 当前已补上 image-level aggregation，并可导出 baseline-compatible JSON 做最小闭环评测。
 
 ### Rule 2
 - Candidate：person + local context

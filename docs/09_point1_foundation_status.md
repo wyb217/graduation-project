@@ -32,6 +32,8 @@
 - Rule 1 predicate extraction
 - Rule 1 executor
 - Rule 1 explanation mapping
+- image-level aggregation
+- 26 张 `clean + rule1` 小闭环 runner / summary
 
 当前实现定位：
 
@@ -55,10 +57,37 @@
 - executor：显式 `violation / no_violation / unknown` 规则
 - explanation：模板化结构化解释
 
+当前仓库还增加了一个实验性的替代后端：
+
+- candidate generation：OpenCV HOG
+- predicate extraction：OpenAI-compatible VLM over person crop
+- executor / explanation：保持不变
+
+也就是说，Rule 1 当前已经可以比较：
+
+1. `candidate -> heuristic predicates -> executor -> explanation`
+2. `candidate -> VLM predicates -> executor -> explanation`
+
+当前 VLM predicate 版内部已经加入两个精度 gate：
+
+- `ppe_applicable`：该候选是否属于 Rule 1 真正关心的 on-foot worker
+- `head_region_visible`：头部区域是否足够可见，能否可靠判断 hard hat
+
+其中 `ppe_applicable` 必须理解为 **candidate-local**：
+
+- 它只判断当前候选是否是 Rule 1 应检查的 worker；
+- 它不是 image-level 排他开关；
+- 当前候选即使同时也违反 Rule 2 / 3 / 4，Rule 1 仍然可以成立。
+
+这些 gate 的目的不是提高 recall，而是先压：
+
+- machine operator / cab occupant 被误算成 PPE 违规
+- 头部不可见却被误判为未戴安全帽
+
 这里的关键点是：
 
-- 当前输出仍是 **per-candidate prediction**；
-- 还没有完成 Rule 1 的 image-level aggregation；
+- 当前内部仍保留 **per-candidate prediction** 作为中间结果；
+- 但对外已经补上 image-level aggregation，可输出单图级 Rule 1 最终判断；
 - `unknown` 是一等状态，不会在可见性不足时被强行压成 yes/no。
 
 ## Rule 1 explain 当前实现
@@ -110,6 +139,11 @@
 
 `candidate -> unified VLM predicate extraction -> executor -> explanation`
 
+当前这条路线的近期重点已经进一步收窄为：
+
+- 先在 26 张 `clean + rule1` 上验证 gate 是否不把结果做坏
+- 再在 65 张 `balanced_test_13x5` 上看 cross-rule false positives 是否下降
+
 ## parquet 数据支持
 
 当前 benchmark 层已经支持直接读取 ConstructionSite10k 的 parquet 文件。
@@ -158,7 +192,7 @@
 
 ## 下一阶段建议
 
-1. 用 smoke/subset 结果验证 Rule 1 主链路输出稳定性；
-2. 增加 Rule 1 image-level aggregation 与最小评测闭环；
-3. 再进入 Rule 4 pair reasoning 与 edge-related modules；
+1. 先在 `balanced_test_13x5_clean + balanced_test_13x5_rule1` 上跑通 Rule 1 小闭环并记录结果；
+2. 再把 Rule 1 扩到 `balanced_test_13x5` 全 65 张，观察其它规则样本上的负例压力；
+3. 进入 Rule 4 pair reasoning 与 edge-related modules；
 4. 继续补强 stratified metrics、error analysis 与 failure export。

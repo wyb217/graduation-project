@@ -151,9 +151,9 @@ dataset = ConstructionSite10kDataset.from_parquet(
 
 ## 当前里程碑后的下一步
 
-1. official eval bridge wrapper
-2. Rule 1 evidence -> executor -> explanation 路径
-3. Rule 4 pair reasoning
+1. Rule 1 small closed-loop（26 张 clean+rule1）
+2. Rule 4 pair reasoning
+3. edge-related modules 与 Rule 2/3
 
 ## 快速测试子集
 
@@ -247,6 +247,112 @@ python scripts/run_point1_eval.py \
 
 - 导出官方风格预测文件，便于后续对接官方评测仓库；
 - 可选生成当前仓库内部 summary，先看 parse success、Macro-F1 和 bucket hit rate。
+
+## Rule 1 小闭环运行命令
+
+如果你想先只跑 Rule 1 的最小方法闭环，可以用冻结的 26 张子集：
+
+- `balanced_test_13x5_clean`
+- `balanced_test_13x5_rule1`
+
+命令如下：
+
+```bash
+conda activate graduation-project
+python scripts/run_point1_rule1_pipeline.py \
+  --target-parquet test.parquet \
+  --registry src/benchmark/splits/constructionsite10k_balanced_test_13x5.json \
+  --target-split-names balanced_test_13x5_clean balanced_test_13x5_rule1 \
+  --output artifacts/point1/rule1-smallloop-balanced_test_clean_rule1.json
+```
+
+如果你想把 Rule 1 的谓词提取改成 OpenAI-compatible VLM（例如 ModelScope），可以额外加：
+
+```bash
+conda activate graduation-project
+python scripts/run_point1_rule1_pipeline.py \
+  --target-parquet test.parquet \
+  --registry src/benchmark/splits/constructionsite10k_balanced_test_13x5.json \
+  --target-split-names balanced_test_13x5_clean balanced_test_13x5_rule1 \
+  --predicate-backend vlm \
+  --provider modelscope \
+  --output artifacts/point1/rule1-smallloop-vlm-modelscope-balanced_test_clean_rule1.json
+```
+
+当前这条 VLM 版小闭环仍然保留：
+
+- person candidate generation：OpenCV HOG
+- predicate extraction：VLM over person crop
+- executor / explanation：显式规则层
+
+因此它验证的是：
+
+`candidate -> VLM predicate extraction -> executor -> explanation`
+
+当前 VLM predicate 版内部额外增加了两个精度 gate：
+
+- `ppe_applicable`：当前候选是否真的是 Rule 1 关心的 **on-foot worker**
+- `head_region_visible`：头盔区域是否真的可见，避免“头部不可见却直接判未戴安全帽”
+
+这里的 `ppe_applicable` 是 **candidate-local** 的：
+
+- 它只回答“这个 candidate 本身是不是 Rule 1 要检查的 on-foot worker”
+- 它**不**回答“这张图是不是 PPE 场景”
+- 因此如果同一个 worker 同时违反 Rule 1 和 Rule 4，Rule 1 依然可以成立
+- nearby excavator / edge / pit 不应自动把 Rule 1 设为不适用
+
+executor 会优先使用这两个 gate 压跨规则误报：
+
+- `ppe_applicable = no` -> 不触发 Rule 1 violation
+- `ppe_applicable = unknown` -> 输出 `unknown`
+- `head_region_visible != yes` 时，`hard_hat_visible = no` 不能直接判 violation
+
+这个脚本会同时生成：
+
+- `artifacts/point1/rule1-smallloop-balanced_test_clean_rule1.json`
+- `artifacts/point1/rule1-smallloop-balanced_test_clean_rule1.summary.json`
+
+其中 summary 关注的是 Rule 1 二分类闭环指标：
+
+- `rule1_precision / recall / f1`
+- `clean_hit_rate`
+- `rule1_hit_rate`
+- `unknown_rate_*`
+
+如果你要在 BML 上跑 65 张 `balanced_test_13x5` 的 Rule 1 负例压力测试，可以直接用：
+
+```bash
+conda activate graduation-project
+python scripts/run_point1_rule1_pipeline.py \
+  --target-parquet test.parquet \
+  --registry src/benchmark/splits/constructionsite10k_balanced_test_13x5.json \
+  --target-split-names \
+    balanced_test_13x5_clean \
+    balanced_test_13x5_rule2 \
+    balanced_test_13x5_rule3 \
+    balanced_test_13x5_rule4 \
+    balanced_test_13x5_rule1 \
+  --positive-split-name balanced_test_13x5_rule1 \
+  --predicate-backend vlm \
+  --provider modelscope \
+  --output artifacts/point1/rule1-smallloop-vlm-modelscope-balanced_test_13x5.json
+```
+
+这组 65 张 summary 会额外给出：
+
+- `negative_hit_rate`
+- `fp_by_bucket`
+- `bucket_hit_rate`
+- `unknown_rate_by_bucket`
+
+如果你还想导出官方风格预测文件，可以继续运行：
+
+```bash
+conda activate graduation-project
+python scripts/run_point1_eval.py \
+  --baseline-output artifacts/point1/rule1-smallloop-balanced_test_clean_rule1.json \
+  --official-output artifacts/point1/rule1-smallloop-balanced_test_clean_rule1.official.json
+```
 
 ## 本地模型 baseline（Qwen3-VL-8B-Instruct）
 

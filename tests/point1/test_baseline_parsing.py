@@ -232,13 +232,11 @@ def test_parse_prediction_set_response_uses_sample_image_id_for_sparse_author_pa
 
     assert prediction_set.image_id == "target-1"
     assert all(
-        prediction.decision_state == "no_violation"
-        for prediction in prediction_set.predictions
+        prediction.decision_state == "no_violation" for prediction in prediction_set.predictions
     )
 
 
-def test_parse_prediction_set_response_treats_negative_sparse_reasons_as_no_violation(
-) -> None:
+def test_parse_prediction_set_response_treats_negative_sparse_reasons_as_no_violation() -> None:
     """Sparse author responses with explicit negative reasons should stay negative."""
     response = """
     {
@@ -265,6 +263,5 @@ def test_parse_prediction_set_response_treats_negative_sparse_reasons_as_no_viol
     prediction_set = parse_prediction_set_response(response)
 
     assert all(
-        prediction.decision_state == "no_violation"
-        for prediction in prediction_set.predictions
+        prediction.decision_state == "no_violation" for prediction in prediction_set.predictions
     )
