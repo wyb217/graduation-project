@@ -36,6 +36,14 @@
 ## Point 1 baseline / BML 运行约定
 - Point 1 baseline 当前优先支持 **本地 Qwen** 路径；BML 默认模型路径约定为：
   - `/home/bml/storage/qwen3_models`
+- **BML Git 远端约定**：
+  - BML 平台上的仓库是直接从 **gitee clone** 下来的；
+  - 因此在 BML 上默认应视 `origin = gitee`；
+  - 在 BML 上给出 git 指令时，默认优先使用：
+    - `git fetch origin`
+    - `git pull origin <branch>`
+    - `git push origin <branch>`
+  - 不要把 BML 上的 `origin` 默认理解成 GitHub。
 - 与 Point 1 baseline 相关的实验，默认先做 smoke test，再做 full test：
   - 先用 `--limit 5` 或 `--limit 20` 验证 parse / output / summary 正常；
   - 确认无误后再跑完整 `test.parquet`。

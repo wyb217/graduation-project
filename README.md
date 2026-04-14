@@ -44,6 +44,21 @@ conda activate graduation-project
 conda env update -f environment.yml --prune
 ```
 
+## BML 平台 Git 约定
+
+如果你是在 **BML 平台** 上运行本仓库，请默认采用以下 Git 约定：
+
+- BML 上的仓库是直接从 **gitee clone** 下来的；
+- 因此 BML 上的 `origin` 默认就是 **gitee**；
+- 在 BML 上拉取或推送更新时，默认使用：
+
+```bash
+git fetch origin
+git pull origin feature/point1-foundation
+```
+
+不要在 BML 上默认把 `origin` 理解成 GitHub。
+
 ## 最常用的日常命令
 
 如果你不想记很多命令，直接用：
