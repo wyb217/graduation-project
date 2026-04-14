@@ -303,13 +303,26 @@ baseline 稳定性都会明显下降。
 
 > 表：BML Local Qwen3-VL 在 ConstructionSite10k full test 上的 author-style classification-only 结果
 
-| Rule | Direct P | Direct R | Direct F1 | 5-shot P | 5-shot R | 5-shot F1 |
-|---|---:|---:|---:|---:|---:|---:|
-| rule1 | 0.197 | 0.481 | 0.280 | 0.206 | 0.917 | 0.336 |
-| rule2 | 0.043 | 0.680 | 0.081 | 0.062 | 0.880 | 0.116 |
-| rule3 | 0.052 | 0.651 | 0.096 | 0.086 | 0.286 | 0.132 |
-| rule4 | 0.019 | 0.708 | 0.036 | 0.026 | 0.208 | 0.045 |
-| macro-F1 | - | - | 0.123 | - | - | 0.157 |
+**Precision**
+
+| Method | rule1 | rule2 | rule3 | rule4 |
+|---|---:|---:|---:|---:|
+| Direct | 0.197 | 0.043 | 0.052 | 0.019 |
+| 5-shot | 0.206 | 0.062 | 0.086 | 0.026 |
+
+**Recall**
+
+| Method | rule1 | rule2 | rule3 | rule4 |
+|---|---:|---:|---:|---:|
+| Direct | 0.481 | 0.680 | 0.651 | 0.708 |
+| 5-shot | 0.917 | 0.880 | 0.286 | 0.208 |
+
+**F1**
+
+| Method | rule1 | rule2 | rule3 | rule4 | macro-F1 |
+|---|---:|---:|---:|---:|---:|
+| Direct | 0.280 | 0.081 | 0.096 | 0.036 | 0.123 |
+| 5-shot | 0.336 | 0.116 | 0.132 | 0.045 | 0.157 |
 
 ### 7.3 Full test 小结
 
