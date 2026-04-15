@@ -86,7 +86,20 @@
 
 这意味着长时间运行不再完全黑箱，实验可操作性更强。
 
-### 5. crop-only prompt 回归修复
+### 5. Rule 1 命令面简化
+
+已完成：
+
+- `--target-preset balanced65|fulltest`
+- `--run-name <name>`
+
+目的不是改变功能，而是：
+
+- 让 BML 上常见运行命令更短；
+- 降低手写超长文件名和 split 名的出错概率；
+- 保留完整底层参数，便于后续研究型调参。
+
+### 6. crop-only prompt 回归修复
 
 已经完成：
 

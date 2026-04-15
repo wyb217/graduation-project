@@ -277,6 +277,19 @@
 6. Rule 1 主线稳定后，再继续进入 Rule 4 pair reasoning 与 edge-related modules；
 7. 持续补强 stratified metrics、error analysis 与 failure export。
 
+## 命令面简化
+
+为了降低 BML 侧的使用门槛，当前 Rule 1 主线还新增了：
+
+- `--target-preset balanced65|fulltest`
+- `--run-name <name>`
+
+它们的作用是：
+
+- 用 `balanced65` 直接代替冗长的 `balanced_test_13x5_*` split 组合；
+- 用 `run-name` 自动生成 output / summary / progress / checkpoint / failures 文件路径；
+- 在保留底层完整参数的同时，给低 coding 经验用户一个更短的日常运行入口。
+
 ## 详细进展文档
 
 为了避免 Point 1 的实验线索分散在聊天记录和零散文档里，当前开始同步维护：

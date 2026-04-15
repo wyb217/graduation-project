@@ -444,18 +444,11 @@ export QWEN3_VL_ROOT=/home/bml/storage/qwen3_models
 
 python scripts/run_point1_rule1_pipeline.py \
   --target-parquet "${CS10K_ROOT}/test.parquet" \
-  --registry src/benchmark/splits/constructionsite10k_balanced_test_13x5.json \
-  --target-split-names \
-    balanced_test_13x5_clean \
-    balanced_test_13x5_rule2 \
-    balanced_test_13x5_rule3 \
-    balanced_test_13x5_rule4 \
-    balanced_test_13x5_rule1 \
-  --positive-split-name balanced_test_13x5_rule1 \
+  --target-preset balanced65 \
   --predicate-backend local_qwen \
   --model-path "${QWEN3_VL_ROOT}" \
   --crop-padding-profile none \
-  --output artifacts/point1/rule1-smallloop-localqwen-balanced_test_13x5.json
+  --run-name stable
 ```
 
 如果你想在 BML 上直接跑 **65 张 local Qwen + detector fallback** 版，可以用：
@@ -465,19 +458,12 @@ export QWEN3_VL_ROOT=/home/bml/storage/qwen3_models
 
 python scripts/run_point1_rule1_pipeline.py \
   --target-parquet "${CS10K_ROOT}/test.parquet" \
-  --registry src/benchmark/splits/constructionsite10k_balanced_test_13x5.json \
-  --target-split-names \
-    balanced_test_13x5_clean \
-    balanced_test_13x5_rule2 \
-    balanced_test_13x5_rule3 \
-    balanced_test_13x5_rule4 \
-    balanced_test_13x5_rule1 \
-  --positive-split-name balanced_test_13x5_rule1 \
+  --target-preset balanced65 \
   --candidate-backend hog_then_torchvision \
   --predicate-backend local_qwen \
   --model-path "${QWEN3_VL_ROOT}" \
   --crop-padding-profile none \
-  --output artifacts/point1/rule1-smallloop-localqwen-hybriddet-balanced_test_13x5.json
+  --run-name stable
 ```
 
 如果你想把当前最佳 Rule 1 路径扩到 **full test 3004**，可以直接用：
@@ -486,23 +472,36 @@ python scripts/run_point1_rule1_pipeline.py \
 export QWEN3_VL_ROOT=/home/bml/storage/qwen3_models
 
 python scripts/run_point1_rule1_pipeline.py \
-  --fulltest \
   --target-parquet "${CS10K_ROOT}/test.parquet" \
+  --target-preset fulltest \
   --candidate-backend hog_then_torchvision \
   --predicate-backend local_qwen \
   --model-path "${QWEN3_VL_ROOT}" \
   --candidate-batch-size 1 \
   --predicate-context-mode crop_only \
   --crop-padding-profile none \
-  --progress-output artifacts/point1/rule1-smallloop-localqwen-hybriddet-fulltest.progress.json \
-  --checkpoint-output artifacts/point1/rule1-smallloop-localqwen-hybriddet-fulltest.checkpoint.json \
-  --checkpoint-every 100 \
-  --failure-output artifacts/point1/rule1-smallloop-localqwen-hybriddet-fulltest.failures.json \
-  --output artifacts/point1/rule1-smallloop-localqwen-hybriddet-fulltest.json \
-  --summary-output artifacts/point1/rule1-smallloop-localqwen-hybriddet-fulltest.summary.json
+  --run-name stable
 ```
 
-这里的 `summary.json` 是 Rule 1 专用 fulltest summary，关注：
+当你使用：
+
+- `--target-preset balanced65`
+- `--run-name stable`
+
+脚本会自动展开固定的 `balanced_test_13x5` 目标配置，并自动生成：
+
+- `artifacts/point1/<stem>.json`
+- `artifacts/point1/<stem>.summary.json`
+- `artifacts/point1/<stem>.progress.json`
+- `artifacts/point1/<stem>.checkpoint.json`
+- `artifacts/point1/<stem>.failures.json`
+
+例如：
+
+- `rule1-smallloop-localqwen-hybriddet-balanced65-stable.json`
+- `rule1-smallloop-localqwen-hybriddet-balanced65-stable.summary.json`
+
+这里的 `summary.json` 仍然是 Rule 1 专用 summary，关注：
 
 - `rule1_precision / recall / f1`
 - `rule1_tp / fp / fn`
@@ -527,6 +526,15 @@ python scripts/run_point1_rule1_pipeline.py \
   - `none`：默认稳定口径，不扩张 person crop
   - `rule1_ppe`：实验性地给头部和脚部更多上下文，用于尝试降低 `hard_hat_visible / lower_body_covered / toe_covered` 的 unknown
   - 当前建议先在 `balanced_test_13x5` 上验证后，再决定是否扩到 full test
+
+如果你需要继续使用底层完整参数：
+
+- `--registry`
+- `--target-split-names`
+- `--positive-split-name`
+- `--output / --summary-output / --progress-output / --checkpoint-output / --failure-output`
+
+它们依然完全可用；`target-preset + run-name` 只是更适合日常 BML 运行的短入口。
 
 如果你还要继续导出 official-style 预测文件，可以接着运行：
 
