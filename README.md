@@ -94,6 +94,42 @@ export QWEN3_VL_ROOT=/home/bml/storage/qwen3_models
 2. black-box baseline 优先走 `scripts/run_point1_local_qwen_baseline.py`
 3. 只有在需要做远端 provider 对照时，再使用 `modelscope`
 
+## BML 平台 PyTorch / torchvision 权重缓存约定
+
+如果你在 BML 上使用：
+
+- `hog_then_torchvision`
+- 本地 Qwen
+- 任何依赖 `torch` / `torchvision` 预训练权重的路径
+
+推荐把 PyTorch 的权重缓存目录固定到一个**持久化路径**，避免 detector 在新容器或新会话里反复下载：
+
+```bash
+export TORCH_HOME=/home/bml/storage/torch_cache
+mkdir -p "${TORCH_HOME}/hub/checkpoints"
+```
+
+当前 Rule 1 detector fallback 依赖的 torchvision 权重会缓存在：
+
+```bash
+${TORCH_HOME}/hub/checkpoints
+```
+
+如果你想在长任务前先手动预下载 Faster R-CNN fallback 权重，可以执行：
+
+```bash
+wget -c https://download.pytorch.org/models/fasterrcnn_resnet50_fpn_v2_coco-dd69338a.pth \
+  -O "${TORCH_HOME}/hub/checkpoints/fasterrcnn_resnet50_fpn_v2_coco-dd69338a.pth"
+```
+
+当前在 BML 上推进 Rule 1 时，推荐至少先设置下面三个环境变量：
+
+```bash
+export CS10K_ROOT=/home/bml/storage/constructionsite10k
+export QWEN3_VL_ROOT=/home/bml/storage/qwen3_models
+export TORCH_HOME=/home/bml/storage/torch_cache
+```
+
 ## 最常用的日常命令
 
 如果你不想记很多命令，直接用：
@@ -441,6 +477,7 @@ python scripts/run_point1_rule1_pipeline.py \
 
 ```bash
 export QWEN3_VL_ROOT=/home/bml/storage/qwen3_models
+export TORCH_HOME=/home/bml/storage/torch_cache
 
 python scripts/run_point1_rule1_pipeline.py \
   --target-parquet "${CS10K_ROOT}/test.parquet" \
@@ -455,6 +492,7 @@ python scripts/run_point1_rule1_pipeline.py \
 
 ```bash
 export QWEN3_VL_ROOT=/home/bml/storage/qwen3_models
+export TORCH_HOME=/home/bml/storage/torch_cache
 
 python scripts/run_point1_rule1_pipeline.py \
   --target-parquet "${CS10K_ROOT}/test.parquet" \
@@ -470,6 +508,7 @@ python scripts/run_point1_rule1_pipeline.py \
 
 ```bash
 export QWEN3_VL_ROOT=/home/bml/storage/qwen3_models
+export TORCH_HOME=/home/bml/storage/torch_cache
 
 python scripts/run_point1_rule1_pipeline.py \
   --target-parquet "${CS10K_ROOT}/test.parquet" \

@@ -38,6 +38,15 @@
 - `--predicate-context-mode crop_only`
 - `--crop-padding-profile none`
 
+当前 BML 侧推荐同时固定：
+
+- `export CS10K_ROOT=/home/bml/storage/constructionsite10k`
+- `export QWEN3_VL_ROOT=/home/bml/storage/qwen3_models`
+- `export TORCH_HOME=/home/bml/storage/torch_cache`
+
+其中 `TORCH_HOME` 的目的不是影响模型逻辑，而是把 PyTorch / torchvision 的权重缓存固定到持久化目录，
+避免 `hog_then_torchvision` 在新容器或新会话里重复下载 detector 权重。
+
 ---
 
 ## 已完成事项
@@ -83,6 +92,7 @@
 - progress / heartbeat
 - checkpoint partial records
 - failure export
+- BML 侧 `TORCH_HOME` 持久缓存约定
 
 这意味着长时间运行不再完全黑箱，实验可操作性更强。
 
