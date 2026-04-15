@@ -454,6 +454,7 @@ python scripts/run_point1_rule1_pipeline.py \
   --positive-split-name balanced_test_13x5_rule1 \
   --predicate-backend local_qwen \
   --model-path "${QWEN3_VL_ROOT}" \
+  --crop-padding-profile none \
   --output artifacts/point1/rule1-smallloop-localqwen-balanced_test_13x5.json
 ```
 
@@ -475,6 +476,7 @@ python scripts/run_point1_rule1_pipeline.py \
   --candidate-backend hog_then_torchvision \
   --predicate-backend local_qwen \
   --model-path "${QWEN3_VL_ROOT}" \
+  --crop-padding-profile none \
   --output artifacts/point1/rule1-smallloop-localqwen-hybriddet-balanced_test_13x5.json
 ```
 
@@ -491,6 +493,7 @@ python scripts/run_point1_rule1_pipeline.py \
   --model-path "${QWEN3_VL_ROOT}" \
   --candidate-batch-size 1 \
   --predicate-context-mode crop_only \
+  --crop-padding-profile none \
   --progress-output artifacts/point1/rule1-smallloop-localqwen-hybriddet-fulltest.progress.json \
   --checkpoint-output artifacts/point1/rule1-smallloop-localqwen-hybriddet-fulltest.checkpoint.json \
   --checkpoint-every 100 \
@@ -520,6 +523,10 @@ python scripts/run_point1_rule1_pipeline.py \
 - `--predicate-context-mode crop_only|crop_with_full_image`：
   - `crop_only`：只看 candidate crop
   - `crop_with_full_image`：同时附带整图上下文，但仍保持 candidate-local predicate / executor
+- `--crop-padding-profile none|rule1_ppe`：
+  - `none`：默认稳定口径，不扩张 person crop
+  - `rule1_ppe`：实验性地给头部和脚部更多上下文，用于尝试降低 `hard_hat_visible / lower_body_covered / toe_covered` 的 unknown
+  - 当前建议先在 `balanced_test_13x5` 上验证后，再决定是否扩到 full test
 
 如果你还要继续导出 official-style 预测文件，可以接着运行：
 

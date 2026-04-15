@@ -397,6 +397,8 @@ def test_run_point1_rule1_pipeline_builds_local_qwen_backend_when_requested(
             "8",
             "--predicate-context-mode",
             "crop_with_full_image",
+            "--crop-padding-profile",
+            "rule1_ppe",
             "--output",
             str(output_path),
         ]
@@ -415,6 +417,7 @@ def test_run_point1_rule1_pipeline_builds_local_qwen_backend_when_requested(
     assert built["run_kwargs"]["model_name"] == "/models/qwen3-vl"
     assert built["extractor_kwargs"]["candidate_batch_size"] == 8
     assert built["extractor_kwargs"]["context_mode"] == "crop_with_full_image"
+    assert built["extractor_kwargs"]["crop_padding_profile"] == "rule1_ppe"
 
 
 def test_run_point1_rule1_pipeline_builds_hybrid_candidate_backend_when_requested(

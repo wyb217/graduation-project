@@ -199,6 +199,18 @@
 - 再继续分析 full test 剩余的 FP / FN / unknown
 - 在这条链稳定的前提下继续做吞吐与上下文增强
 
+当前还新增了一条**默认关闭的 crop padding 实验线**，只作用于：
+
+- Rule 1
+- local Qwen predicate extractor
+
+设计原则是：
+
+- 不改 detector 原始 bbox；
+- 不改最终输出 bbox；
+- 只对送入 local Qwen 的 person crop 做可控扩张；
+- 先把它作为显式实验开关，再决定是否值得纳入主线。
+
 ## parquet 数据支持
 
 当前 benchmark 层已经支持直接读取 ConstructionSite10k 的 parquet 文件。
@@ -260,6 +272,21 @@
 3. 优化 full test 运行体验：
    - 增加 progress / heartbeat / checkpoint
    - 评估 candidate batching、并行 crop 等吞吐优化
-4. 评估“candidate crop + full image context”的谓词提取方式，但继续保留 candidate-local executor；
-5. Rule 1 主线稳定后，再继续进入 Rule 4 pair reasoning 与 edge-related modules；
-6. 持续补强 stratified metrics、error analysis 与 failure export。
+4. 优先评估 crop padding 是否能压 `hard_hat_visible / lower_body_covered / toe_covered` 的 unknown；
+5. 评估“candidate crop + full image context”的谓词提取方式，但继续保留 candidate-local executor；
+6. Rule 1 主线稳定后，再继续进入 Rule 4 pair reasoning 与 edge-related modules；
+7. 持续补强 stratified metrics、error analysis 与 failure export。
+
+## 详细进展文档
+
+为了避免 Point 1 的实验线索分散在聊天记录和零散文档里，当前开始同步维护：
+
+- `docs/15_point1_progress_log.md`
+
+其中会详细记录：
+
+- 做过哪些实验；
+- 每个实验的目标与结论；
+- 当前已知问题；
+- 当前主线与实验线的边界；
+- 下一步建议。

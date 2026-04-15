@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 from benchmark.constructionsite10k.types import ConstructionSiteSample
+from common.schemas.bbox import NormalizedBBox
 from point1.baselines.local_qwen import LocalQwen3VLClient
 from point1.candidates.person import PersonCandidate
 from point1.predicates.rule1 import Rule1PredicateResult, Rule1PredicateSet
@@ -16,6 +17,7 @@ from point1.predicates.rule1_vlm import RULE1_VLM_SYSTEM_PROMPT, RULE1_VLM_USER_
 
 VALID_STATES = {"yes", "no", "unknown"}
 CONTEXT_MODES = {"crop_only", "crop_with_full_image"}
+CROP_PADDING_PROFILES = {"none", "rule1_ppe"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,12 +30,15 @@ class LocalQwenRule1PredicateExtractor:
     min_candidate_height: int = 48
     candidate_batch_size: int = 1
     context_mode: Literal["crop_only", "crop_with_full_image"] = "crop_only"
+    crop_padding_profile: Literal["none", "rule1_ppe"] = "none"
 
     def __post_init__(self) -> None:
         if self.candidate_batch_size <= 0:
             raise ValueError("candidate_batch_size must be positive.")
         if self.context_mode not in CONTEXT_MODES:
             raise ValueError(f"Unsupported context_mode: {self.context_mode}")
+        if self.crop_padding_profile not in CROP_PADDING_PROFILES:
+            raise ValueError(f"Unsupported crop_padding_profile: {self.crop_padding_profile}")
 
     def extract(
         self,
@@ -57,8 +62,8 @@ class LocalQwenRule1PredicateExtractor:
         valid_candidates: list[tuple[PersonCandidate, object]] = []
 
         for candidate in candidates:
-            candidate_crop = _crop_bbox(image, candidate.bbox)
-            crop_width, crop_height = candidate_crop.size
+            unpadded_crop = _crop_bbox(image, candidate.bbox)
+            crop_width, crop_height = unpadded_crop.size
             if crop_width < self.min_candidate_width or crop_height < self.min_candidate_height:
                 predicate_sets_by_candidate_id[candidate.candidate_id] = (
                     _build_unknown_predicate_set(
@@ -69,6 +74,11 @@ class LocalQwenRule1PredicateExtractor:
                     )
                 )
                 continue
+            candidate_crop = _crop_bbox(
+                image,
+                candidate.bbox,
+                padding_profile=self.crop_padding_profile,
+            )
             valid_candidates.append((candidate, candidate_crop))
 
         if hasattr(self.client, "complete_batch") and self.candidate_batch_size > 1:
@@ -266,10 +276,36 @@ def _load_pil_image(sample: ConstructionSiteSample):
     return Image.open(io.BytesIO(sample.image.bytes)).convert("RGB")
 
 
-def _crop_bbox(image, bbox):
+def _crop_bbox(image, bbox, *, padding_profile: str = "none"):
+    expanded_bbox = _expand_bbox(bbox, padding_profile=padding_profile)
     image_width, image_height = image.size
-    left = int(bbox.x_min * image_width)
-    top = int(bbox.y_min * image_height)
-    right = max(left + 1, int(bbox.x_max * image_width))
-    bottom = max(top + 1, int(bbox.y_max * image_height))
+    left = int(expanded_bbox.x_min * image_width)
+    top = int(expanded_bbox.y_min * image_height)
+    right = max(left + 1, int(expanded_bbox.x_max * image_width))
+    bottom = max(top + 1, int(expanded_bbox.y_max * image_height))
     return image.crop((left, top, right, bottom))
+
+
+def _expand_bbox(
+    bbox: NormalizedBBox,
+    *,
+    padding_profile: str,
+) -> NormalizedBBox:
+    if padding_profile == "none":
+        return bbox
+    if padding_profile != "rule1_ppe":
+        raise ValueError(f"Unsupported crop padding profile: {padding_profile}")
+
+    width = bbox.x_max - bbox.x_min
+    height = bbox.y_max - bbox.y_min
+    left_pad = width * 0.08
+    right_pad = width * 0.08
+    top_pad = height * 0.12
+    bottom_pad = height * 0.20
+
+    return NormalizedBBox(
+        x_min=max(0.0, bbox.x_min - left_pad),
+        y_min=max(0.0, bbox.y_min - top_pad),
+        x_max=min(1.0, bbox.x_max + right_pad),
+        y_max=min(1.0, bbox.y_max + bottom_pad),
+    )

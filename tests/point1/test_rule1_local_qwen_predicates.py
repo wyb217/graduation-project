@@ -235,3 +235,52 @@ def test_local_qwen_rule1_predicate_extractor_supports_full_image_context(
     assert content[2]["type"] == "text"
     assert "first image is the worker crop" in content[2]["text"]
     assert "Candidate bbox (normalized xyxy)" in content[2]["text"]
+
+
+def test_local_qwen_rule1_predicate_extractor_can_expand_crop_with_padding_profile(
+    sample_annotation: dict[str, object],
+) -> None:
+    """Padding profiles should only change crop geometry, not crop-only prompt semantics."""
+    sample = parse_sample(
+        {
+            **sample_annotation,
+            "image": {"bytes": _valid_png_bytes(), "path": "demo.png"},
+        }
+    )
+    candidate = PersonCandidate(
+        candidate_id="person-1",
+        bbox=NormalizedBBox(0.1, 0.2, 0.3, 0.6),
+        score=0.9,
+    )
+    response = """
+    {
+      "person_visible": {"state": "yes", "score": 0.95, "reason": "worker is visible"},
+      "ppe_applicable": {"state": "yes", "score": 0.92, "reason": "worker is on foot"},
+      "head_region_visible": {"state": "yes", "score": 0.88, "reason": "head is visible"},
+      "hard_hat_visible": {"state": "no", "score": 0.81, "reason": "no hard hat"},
+      "upper_body_covered": {"state": "yes", "score": 0.77, "reason": "jacket visible"},
+      "lower_body_covered": {"state": "unknown", "score": 0.42, "reason": "legs occluded"},
+      "toe_covered": {"state": "yes", "score": 0.73, "reason": "shoes visible"}
+    }
+    """
+    client_none = FakeLocalQwenClient(response)
+    extractor_none = LocalQwenRule1PredicateExtractor(
+        client=client_none,
+        model_name="demo-model",
+        crop_padding_profile="none",
+    )
+    client_padded = FakeLocalQwenClient(response)
+    extractor_padded = LocalQwenRule1PredicateExtractor(
+        client=client_padded,
+        model_name="demo-model",
+        crop_padding_profile="rule1_ppe",
+    )
+
+    extractor_none.extract(sample, candidate)
+    extractor_padded.extract(sample, candidate)
+
+    none_content = client_none.calls[0]["messages"][1]["content"]
+    padded_content = client_padded.calls[0]["messages"][1]["content"]
+    assert none_content[0]["image"].size == (26, 51)
+    assert padded_content[0]["image"].size == (30, 68)
+    assert "Candidate bbox (normalized xyxy)" not in padded_content[1]["text"]

@@ -163,6 +163,12 @@ def build_parser() -> argparse.ArgumentParser:
         default="crop_only",
         help="Whether local-Qwen predicate prompts should include the full image context.",
     )
+    parser.add_argument(
+        "--crop-padding-profile",
+        choices=("none", "rule1_ppe"),
+        default="none",
+        help="Optional crop expansion profile for the local-Qwen Rule 1 predicate input.",
+    )
     return parser
 
 
@@ -363,6 +369,7 @@ def _build_rule1_runtime(
         model_name=args.model_path,
         candidate_batch_size=args.candidate_batch_size,
         context_mode=args.predicate_context_mode,
+        crop_padding_profile=args.crop_padding_profile,
     )
     pipeline = Rule1Pipeline(
         candidate_generator=candidate_generator,
