@@ -87,6 +87,7 @@ def test_local_qwen_rule1_predicate_extractor_parses_json_response(
     assert content[0]["type"] == "image"
     assert "may also violate Rule 2, 3, or 4" in content[1]["text"]
     assert "Do not set ppe_applicable to no" in content[1]["text"]
+    assert "Candidate bbox (normalized xyxy)" not in content[1]["text"]
 
 
 def test_local_qwen_rule1_predicate_extractor_short_circuits_tiny_candidates(

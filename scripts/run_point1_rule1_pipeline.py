@@ -154,7 +154,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--candidate-batch-size",
         type=int,
-        default=4,
+        default=1,
         help="Batch size for local-Qwen predicate extraction across candidates from one image.",
     )
     parser.add_argument(

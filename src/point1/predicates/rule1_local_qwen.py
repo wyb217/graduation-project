@@ -120,18 +120,17 @@ def _build_messages(
     candidate_bbox,
     full_image=None,
 ) -> list[dict[str, object]]:
-    prompt_text = (
-        f"{RULE1_VLM_USER_PROMPT}\n"
-        f"Candidate ID: {candidate_id}\n"
-        f"Candidate bbox (normalized xyxy): {candidate_bbox.to_list()}\n"
-    )
     if full_image is None:
+        prompt_text = f"{RULE1_VLM_USER_PROMPT}\nCandidate ID: {candidate_id}"
         content = [
             {"type": "image", "image": image},
             {"type": "text", "text": prompt_text},
         ]
     else:
-        prompt_text += (
+        prompt_text = (
+            f"{RULE1_VLM_USER_PROMPT}\n"
+            f"Candidate ID: {candidate_id}\n"
+            f"Candidate bbox (normalized xyxy): {candidate_bbox.to_list()}\n"
             "The first image is the worker crop. "
             "The second image is the full scene context. "
             "Judge only the candidate worker indicated by the crop and bbox.\n"

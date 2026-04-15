@@ -489,7 +489,7 @@ python scripts/run_point1_rule1_pipeline.py \
   --candidate-backend hog_then_torchvision \
   --predicate-backend local_qwen \
   --model-path "${QWEN3_VL_ROOT}" \
-  --candidate-batch-size 4 \
+  --candidate-batch-size 1 \
   --predicate-context-mode crop_only \
   --progress-output artifacts/point1/rule1-smallloop-localqwen-hybriddet-fulltest.progress.json \
   --checkpoint-output artifacts/point1/rule1-smallloop-localqwen-hybriddet-fulltest.checkpoint.json \
@@ -515,6 +515,8 @@ python scripts/run_point1_rule1_pipeline.py \
 新增可选性能/建模参数：
 
 - `--candidate-batch-size`：同一张图上对多个 person crop 做 local Qwen micro-batch
+  - 当前默认建议先用 `1`，把它作为稳定研究口径
+  - `>1` 仍属于实验性提速选项，建议先在 65 张子集上验证再上 full test
 - `--predicate-context-mode crop_only|crop_with_full_image`：
   - `crop_only`：只看 candidate crop
   - `crop_with_full_image`：同时附带整图上下文，但仍保持 candidate-local predicate / executor
