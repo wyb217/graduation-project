@@ -85,6 +85,41 @@ class LocalQwen3VLClient:
         )
         return output_text[0]
 
+    def complete_batch(
+        self,
+        *,
+        messages_batch: list[list[dict[str, Any]]],
+    ) -> list[str]:
+        """Run one local Qwen3-VL generation over multiple chat conversations."""
+        if not messages_batch:
+            return []
+        self._ensure_loaded()
+        inputs = self._processor.apply_chat_template(
+            messages_batch,
+            tokenize=True,
+            add_generation_prompt=True,
+            return_dict=True,
+            return_tensors="pt",
+        )
+        inputs.pop("token_type_ids", None)
+        for key, value in list(inputs.items()):
+            if hasattr(value, "to"):
+                inputs[key] = value.to(self._model.device)
+        generated_ids = self._model.generate(
+            **inputs,
+            max_new_tokens=self._config.max_new_tokens,
+        )
+        generated_ids_trimmed = [
+            out_ids[len(in_ids) :]
+            for in_ids, out_ids in zip(inputs["input_ids"], generated_ids, strict=True)
+        ]
+        output_text = self._processor.batch_decode(
+            generated_ids_trimmed,
+            skip_special_tokens=True,
+            clean_up_tokenization_spaces=False,
+        )
+        return list(output_text)
+
     def _ensure_loaded(self) -> None:
         if self._model is not None and self._processor is not None:
             return

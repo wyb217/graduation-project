@@ -10,6 +10,7 @@ from benchmark.constructionsite10k.loader import ConstructionSite10kDataset
 from benchmark.constructionsite10k.registry import SplitRegistry
 from benchmark.constructionsite10k.types import ConstructionSiteSample
 from common.io.json_io import write_json
+from eval.reports.point1_rule1_failures import export_rule1_failures
 from eval.reports.point1_rule1_summary import (
     summarize_rule1_bucketed_run,
     summarize_rule1_run_from_dataset,
@@ -121,10 +122,46 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional explicit path for the Rule 1 binary summary JSON.",
     )
     parser.add_argument(
+        "--progress-output",
+        type=Path,
+        default=None,
+        help="Optional path for a JSON heartbeat file updated after each image.",
+    )
+    parser.add_argument(
+        "--checkpoint-output",
+        type=Path,
+        default=None,
+        help="Optional path for writing partial baseline records during long runs.",
+    )
+    parser.add_argument(
+        "--checkpoint-every",
+        type=int,
+        default=0,
+        help="Write partial results every N images when --checkpoint-output is set.",
+    )
+    parser.add_argument(
+        "--failure-output",
+        type=Path,
+        default=None,
+        help="Optional path for a Rule 1 FP/FN/unknown export JSON.",
+    )
+    parser.add_argument(
         "--limit",
         type=int,
         default=None,
         help="Optional cap for quick smoke runs after split filtering.",
+    )
+    parser.add_argument(
+        "--candidate-batch-size",
+        type=int,
+        default=4,
+        help="Batch size for local-Qwen predicate extraction across candidates from one image.",
+    )
+    parser.add_argument(
+        "--predicate-context-mode",
+        choices=("crop_only", "crop_with_full_image"),
+        default="crop_only",
+        help="Whether local-Qwen predicate prompts should include the full image context.",
     )
     return parser
 
@@ -143,6 +180,9 @@ def main() -> None:
         model_name=model_name,
         mode=mode,
         show_progress=True,
+        progress_output=args.progress_output,
+        checkpoint_output=args.checkpoint_output,
+        checkpoint_every=args.checkpoint_every,
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     write_json(args.output, [record.to_dict() for record in records])
@@ -158,6 +198,20 @@ def main() -> None:
     summary_output.parent.mkdir(parents=True, exist_ok=True)
     write_json(summary_output, summary)
     print(json.dumps({"summary_output": str(summary_output)}, ensure_ascii=False, indent=2))
+    if args.failure_output is not None:
+        args.failure_output.parent.mkdir(parents=True, exist_ok=True)
+        failure_export = export_rule1_failures(
+            output_path=args.output,
+            target_samples=target_samples,
+        )
+        write_json(args.failure_output, failure_export)
+        print(
+            json.dumps(
+                {"failure_output": str(args.failure_output)},
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
 
 
 def _load_target_samples(
@@ -307,6 +361,8 @@ def _build_rule1_runtime(
     predicate_extractor = LocalQwenRule1PredicateExtractor(
         client=client,
         model_name=args.model_path,
+        candidate_batch_size=args.candidate_batch_size,
+        context_mode=args.predicate_context_mode,
     )
     pipeline = Rule1Pipeline(
         candidate_generator=candidate_generator,

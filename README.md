@@ -489,6 +489,12 @@ python scripts/run_point1_rule1_pipeline.py \
   --candidate-backend hog_then_torchvision \
   --predicate-backend local_qwen \
   --model-path "${QWEN3_VL_ROOT}" \
+  --candidate-batch-size 4 \
+  --predicate-context-mode crop_only \
+  --progress-output artifacts/point1/rule1-smallloop-localqwen-hybriddet-fulltest.progress.json \
+  --checkpoint-output artifacts/point1/rule1-smallloop-localqwen-hybriddet-fulltest.checkpoint.json \
+  --checkpoint-every 100 \
+  --failure-output artifacts/point1/rule1-smallloop-localqwen-hybriddet-fulltest.failures.json \
   --output artifacts/point1/rule1-smallloop-localqwen-hybriddet-fulltest.json \
   --summary-output artifacts/point1/rule1-smallloop-localqwen-hybriddet-fulltest.summary.json
 ```
@@ -499,6 +505,19 @@ python scripts/run_point1_rule1_pipeline.py \
 - `rule1_tp / fp / fn`
 - `positive_support / negative_support`
 - `unknown_rate_overall`
+
+新增可选运行期产物：
+
+- `*.progress.json`：heartbeat / 当前进度
+- `*.checkpoint.json`：定期落盘的 partial records
+- `*.failures.json`：按 Rule 1 真值导出的 FP / FN / unknown / parse-fail 分析入口
+
+新增可选性能/建模参数：
+
+- `--candidate-batch-size`：同一张图上对多个 person crop 做 local Qwen micro-batch
+- `--predicate-context-mode crop_only|crop_with_full_image`：
+  - `crop_only`：只看 candidate crop
+  - `crop_with_full_image`：同时附带整图上下文，但仍保持 candidate-local predicate / executor
 
 如果你还要继续导出 official-style 预测文件，可以接着运行：
 

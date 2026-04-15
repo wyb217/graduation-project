@@ -133,32 +133,36 @@
 - 5-shot
 - author-style prompt
 
-但当前 Rule 1 主方法链路 **还没有直接接入 VLM**。目前主方法更像：
+当前 Rule 1 主方法链路也已经接入 **local Qwen predicate backend**。当前最有代表性的实现形态是：
 
-- lightweight detector + heuristic predicates + symbolic executor
+- `hog_then_torchvision` candidate detector
+- local Qwen person-crop predicate extraction
+- symbolic executor
+- template-based explanation
 
-这样做的目的，是先把：
+也就是说，当前 Rule 1 主线已经不再是“纯 heuristic predicate”，而是：
+
+`candidate -> local Qwen predicate extraction -> executor -> explanation`
+
+这样做的目的，是把：
 
 - candidate
 - predicate
 - executor
 - explanation
 
-这四层的结构和协议稳定下来，而不是一开始就退回黑箱最终判别。
+这四层继续保持为**可审计的显式结构**，而不是再次退回黑箱整图最终判别。
 
 当前更推荐的下一步不是“统一 VLM 最终判别”，而是：
 
-- 把 heuristic predicate extractor 升级成 **统一的 VLM predicate judge**
+- 在当前 local Qwen 主线基础上继续强化 **统一的 VLM predicate judge**
 - 保留 executor / explanation 作为显式规则层
 
 也就是说，后续更理想的 Point 1 路线是：
 
 `candidate -> unified VLM predicate extraction -> executor -> explanation`
 
-当前这条路线的近期重点已经进一步收窄为：
-
-- 先在 26 张 `clean + rule1` 上验证 gate 是否不把结果做坏
-- 再在 65 张 `balanced_test_13x5` 上看 cross-rule false positives 是否下降
+当前这条路线的近期重点已经从 26 / 65 quick-test 进一步扩展到 Rule 1 full test（3004）。
 
 当前已经拿到的 BML local Qwen 结果说明：
 
@@ -175,11 +179,25 @@
 2. detector fallback 一旦打通，Rule 1 recall 会出现明显提升
 3. 当前这条 `hog_then_torchvision + local Qwen + executor` 路径已经成为最值得继续推进的 Rule 1 主线
 
-因此当前 Rule 1 的最直接改进方向已经从“先换 predicate backend”切换为：
+当前已经拿到的 Rule 1 full test（3004）结果是：
+
+- precision: `0.633`
+- recall: `0.549`
+- F1: `0.588`
+- TP / FP / FN: `178 / 103 / 146`
+- unknown rate: `0.572`
+
+这说明：
+
+1. Rule 1 主方法已经不只是 quick-test 原型，而是具备了正式 full test 主结果；
+2. 当前主线相对 black-box classification-only 的最大优势是 **precision 与 controllability**；
+3. 当前主问题已经从“是否能把链路跑通”切换为“如何减少 unknown、提高 coverage、同时保持较低 FP”。
+
+因此当前 Rule 1 的最直接改进方向已经从“先换 predicate backend / 先补 full test”切换为：
 
 - **先保留新的 detector fallback 主线**
-- 再继续分析剩余的 FP / FN / unknown
-- 在这条链稳定后，直接扩到 full test 评估
+- 再继续分析 full test 剩余的 FP / FN / unknown
+- 在这条链稳定的前提下继续做吞吐与上下文增强
 
 ## parquet 数据支持
 
@@ -229,12 +247,19 @@
 
 ## 下一阶段建议
 
-1. 把这次 `hog_then_torchvision + local Qwen` 的 26/65 结果正式记录为 Rule 1 当前最佳路径；
-2. 基于这条最佳路径，补 fulltest 运行/summary/export 入口；
-3. 在 BML 上跑 Rule 1 full test，拿到 Rule 1 的 3004 张主结果；
-4. fulltest 跑完后，再分析：
-   - 唯一 FP
-   - 剩余 FN
-   - 高频 unknown 项（尤其 `toe_covered`）
-5. Rule 1 fulltest 稳定后，再继续进入 Rule 4 pair reasoning 与 edge-related modules；
+1. 围绕 Rule 1 full test 做第一轮 error anatomy：
+   - `103 FP`
+   - `146 FN`
+   - `1718 unknown`
+2. 优先补强 failure export 与结果整理：
+   - image_id
+   - decision_state
+   - reason_text
+   - unknown_items
+   - target_bbox
+3. 优化 full test 运行体验：
+   - 增加 progress / heartbeat / checkpoint
+   - 评估 candidate batching、并行 crop 等吞吐优化
+4. 评估“candidate crop + full image context”的谓词提取方式，但继续保留 candidate-local executor；
+5. Rule 1 主线稳定后，再继续进入 Rule 4 pair reasoning 与 edge-related modules；
 6. 持续补强 stratified metrics、error analysis 与 failure export。

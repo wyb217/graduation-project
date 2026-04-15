@@ -170,10 +170,7 @@ def summarize_rule1_run_from_dataset(
         target_parquet_paths,
         include_image_bytes=False,
     )
-    truth = {
-        sample.image_id: bool(sample.violations[1] is not None)
-        for sample in dataset.samples
-    }
+    truth = {sample.image_id: bool(sample.violations[1] is not None) for sample in dataset.samples}
     records = json.loads(output_path.read_text(encoding="utf-8"))
 
     tp = fp = fn = 0
