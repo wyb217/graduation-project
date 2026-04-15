@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+from pathlib import Path
+
 from benchmark.constructionsite10k.types import ConstructionSiteSample
+from common.io.json_io import write_json
 from common.schemas.point1 import Point1BaselineRecord
 from point1.pipelines.rule1 import Rule1Pipeline
 
@@ -15,6 +19,9 @@ def run_rule1_pipeline(
     model_name: str = "opencv_hog+heuristic_rule1",
     mode: str = "rule1_smallloop",
     show_progress: bool = False,
+    progress_output: Path | None = None,
+    checkpoint_output: Path | None = None,
+    checkpoint_every: int | None = None,
 ) -> list[Point1BaselineRecord]:
     """Run the Rule 1 image-level pipeline over a sequence of benchmark samples."""
     active_pipeline = Rule1Pipeline() if pipeline is None else pipeline
@@ -23,7 +30,10 @@ def run_rule1_pipeline(
     total = len(target_samples)
     for index, target_sample in enumerate(target_samples, start=1):
         if show_progress:
-            print(f"[{index}/{total}] running rule1_smallloop on image {target_sample.image_id}")
+            print(
+                f"[{index}/{total}] running rule1_smallloop on image {target_sample.image_id}",
+                flush=True,
+            )
         try:
             result = active_pipeline.run(target_sample)
             records.append(
@@ -48,4 +58,21 @@ def run_rule1_pipeline(
                     error_message=str(exc),
                 )
             )
+        if progress_output is not None:
+            write_json(
+                progress_output,
+                {
+                    "total": total,
+                    "completed": index,
+                    "last_image_id": target_sample.image_id,
+                    "updated_at": datetime.now(UTC).isoformat(),
+                },
+            )
+        if (
+            checkpoint_output is not None
+            and checkpoint_every is not None
+            and checkpoint_every > 0
+            and (index % checkpoint_every == 0 or index == total)
+        ):
+            write_json(checkpoint_output, [record.to_dict() for record in records])
     return records

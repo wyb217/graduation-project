@@ -8,13 +8,17 @@ from pathlib import Path
 
 from benchmark.constructionsite10k.loader import ConstructionSite10kDataset
 from benchmark.constructionsite10k.registry import SplitRegistry
+from benchmark.constructionsite10k.types import ConstructionSiteSample
 from common.io.json_io import write_json
+from eval.reports.point1_rule1_failures import export_rule1_failures
 from eval.reports.point1_rule1_summary import (
     summarize_rule1_bucketed_run,
+    summarize_rule1_run_from_dataset,
     summarize_rule1_smallloop,
 )
 from point1.baselines import OpenAICompatibleVisionClient, load_provider_catalog
 from point1.baselines.local_qwen import LocalQwen3VLClient, LocalQwenLoadConfig
+from point1.candidates import HogThenTorchvisionPersonCandidateGenerator
 from point1.pipelines import run_rule1_pipeline
 from point1.pipelines.rule1 import Rule1Pipeline
 from point1.predicates import LocalQwenRule1PredicateExtractor, VLMRule1PredicateExtractor
@@ -31,15 +35,20 @@ def build_parser() -> argparse.ArgumentParser:
         help="Parquet shard paths for the target dataset.",
     )
     parser.add_argument(
+        "--fulltest",
+        action="store_true",
+        help="Run Rule 1 over the full target parquet without registry-driven subset filtering.",
+    )
+    parser.add_argument(
         "--registry",
         type=Path,
-        required=True,
+        default=None,
         help="Frozen registry containing the clean/rule1 split names to run.",
     )
     parser.add_argument(
         "--target-split-names",
         nargs="+",
-        required=True,
+        default=None,
         help=(
             "Ordered split names to combine, e.g. clean then rule1 or "
             "clean/rule2/rule3/rule4/rule1."
@@ -51,6 +60,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="Explicit positive Rule 1 split name. Required for multi-bucket runs with 3+ splits.",
     )
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument(
+        "--candidate-backend",
+        choices=("hog", "hog_then_torchvision"),
+        default="hog",
+        help="Candidate generator backend for Rule 1.",
+    )
+    parser.add_argument(
+        "--torchvision-score-threshold",
+        type=float,
+        default=0.3,
+        help="Score threshold for the torchvision fallback detector.",
+    )
     parser.add_argument(
         "--predicate-backend",
         choices=("heuristic", "vlm", "local_qwen"),
@@ -101,10 +122,46 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional explicit path for the Rule 1 binary summary JSON.",
     )
     parser.add_argument(
+        "--progress-output",
+        type=Path,
+        default=None,
+        help="Optional path for a JSON heartbeat file updated after each image.",
+    )
+    parser.add_argument(
+        "--checkpoint-output",
+        type=Path,
+        default=None,
+        help="Optional path for writing partial baseline records during long runs.",
+    )
+    parser.add_argument(
+        "--checkpoint-every",
+        type=int,
+        default=0,
+        help="Write partial results every N images when --checkpoint-output is set.",
+    )
+    parser.add_argument(
+        "--failure-output",
+        type=Path,
+        default=None,
+        help="Optional path for a Rule 1 FP/FN/unknown export JSON.",
+    )
+    parser.add_argument(
         "--limit",
         type=int,
         default=None,
         help="Optional cap for quick smoke runs after split filtering.",
+    )
+    parser.add_argument(
+        "--candidate-batch-size",
+        type=int,
+        default=4,
+        help="Batch size for local-Qwen predicate extraction across candidates from one image.",
+    )
+    parser.add_argument(
+        "--predicate-context-mode",
+        choices=("crop_only", "crop_with_full_image"),
+        default="crop_only",
+        help="Whether local-Qwen predicate prompts should include the full image context.",
     )
     return parser
 
@@ -113,8 +170,69 @@ def main() -> None:
     """Parse arguments, run the Rule 1 pipeline, and write output plus summary."""
     args = build_parser().parse_args()
 
-    if len(args.target_split_names) < 2:
-        raise ValueError("Rule 1 run expects at least two split names.")
+    target_samples, summary_context = _load_target_samples(args)
+    pipeline, provider_name, model_name, mode = _build_rule1_runtime(args)
+
+    records = run_rule1_pipeline(
+        target_samples=target_samples,
+        pipeline=pipeline,
+        provider_name=provider_name,
+        model_name=model_name,
+        mode=mode,
+        show_progress=True,
+        progress_output=args.progress_output,
+        checkpoint_output=args.checkpoint_output,
+        checkpoint_every=args.checkpoint_every,
+    )
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    write_json(args.output, [record.to_dict() for record in records])
+    print(json.dumps({"output": str(args.output)}, ensure_ascii=False, indent=2))
+
+    summary_output = args.summary_output or args.output.with_suffix(".summary.json")
+    summary = _build_summary(
+        args=args,
+        output_path=args.output,
+        target_samples=target_samples,
+        summary_context=summary_context,
+    )
+    summary_output.parent.mkdir(parents=True, exist_ok=True)
+    write_json(summary_output, summary)
+    print(json.dumps({"summary_output": str(summary_output)}, ensure_ascii=False, indent=2))
+    if args.failure_output is not None:
+        args.failure_output.parent.mkdir(parents=True, exist_ok=True)
+        failure_export = export_rule1_failures(
+            output_path=args.output,
+            target_samples=target_samples,
+        )
+        write_json(args.failure_output, failure_export)
+        print(
+            json.dumps(
+                {"failure_output": str(args.failure_output)},
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+
+
+def _load_target_samples(
+    args: argparse.Namespace,
+) -> tuple[tuple[ConstructionSiteSample, ...], dict[str, object]]:
+    if args.fulltest:
+        if args.target_split_names:
+            raise ValueError("--target-split-names cannot be used with --fulltest.")
+        if args.registry is not None:
+            raise ValueError("--registry cannot be used with --fulltest.")
+        dataset = ConstructionSite10kDataset.from_parquet(
+            args.target_parquet,
+            include_image_bytes=True,
+        )
+        target_samples = dataset.samples if args.limit is None else dataset.samples[: args.limit]
+        return tuple(target_samples), {"mode": "fulltest"}
+
+    if args.target_split_names is None or len(args.target_split_names) < 2:
+        raise ValueError("Rule 1 run expects at least two split names unless --fulltest is set.")
+    if args.registry is None:
+        raise ValueError("--registry is required unless --fulltest is set.")
 
     registry = SplitRegistry.from_json(args.registry)
     positive_split_name = _resolve_positive_split_name(args)
@@ -131,51 +249,55 @@ def main() -> None:
         if image_id in available_sample_ids
     )
     target_samples = ordered_samples if args.limit is None else ordered_samples[: args.limit]
-    pipeline, provider_name, model_name, mode = _build_rule1_runtime(args)
+    return target_samples, {
+        "mode": "subset",
+        "registry": registry,
+        "positive_split_name": positive_split_name,
+    }
 
-    records = run_rule1_pipeline(
-        target_samples=target_samples,
-        pipeline=pipeline,
-        provider_name=provider_name,
-        model_name=model_name,
-        mode=mode,
-        show_progress=True,
-    )
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    write_json(args.output, [record.to_dict() for record in records])
-    print(json.dumps({"output": str(args.output)}, ensure_ascii=False, indent=2))
 
-    summary_output = args.summary_output or args.output.with_suffix(".summary.json")
+def _build_summary(
+    *,
+    args: argparse.Namespace,
+    output_path: Path,
+    target_samples,
+    summary_context: dict[str, object],
+) -> dict[str, object]:
+    if summary_context["mode"] == "fulltest":
+        return summarize_rule1_run_from_dataset(
+            output_path=output_path,
+            target_parquet_paths=tuple(args.target_parquet),
+        )
+
+    positive_split_name = str(summary_context["positive_split_name"])
     if (
         args.limit is None
         and len(args.target_split_names) == 2
         and positive_split_name == args.target_split_names[1]
     ):
-        summary = summarize_rule1_smallloop(
-            output_path=args.output,
+        return summarize_rule1_smallloop(
+            output_path=output_path,
             registry_path=args.registry,
             clean_split_name=args.target_split_names[0],
             positive_split_name=positive_split_name,
         )
-    else:
-        selected_image_ids = tuple(sample.image_id for sample in target_samples)
-        selected_image_id_set = set(selected_image_ids)
-        bucket_image_ids = {
-            split_name: tuple(
-                image_id
-                for image_id in registry.get_split(split_name)
-                if image_id in selected_image_id_set
-            )
-            for split_name in args.target_split_names
-        }
-        summary = summarize_rule1_bucketed_run(
-            output_path=args.output,
-            bucket_image_ids=bucket_image_ids,
-            positive_bucket_name=positive_split_name,
+
+    registry = summary_context["registry"]
+    selected_image_ids = tuple(sample.image_id for sample in target_samples)
+    selected_image_id_set = set(selected_image_ids)
+    bucket_image_ids = {
+        split_name: tuple(
+            image_id
+            for image_id in registry.get_split(split_name)
+            if image_id in selected_image_id_set
         )
-    summary_output.parent.mkdir(parents=True, exist_ok=True)
-    write_json(summary_output, summary)
-    print(json.dumps({"summary_output": str(summary_output)}, ensure_ascii=False, indent=2))
+        for split_name in args.target_split_names
+    }
+    return summarize_rule1_bucketed_run(
+        output_path=output_path,
+        bucket_image_ids=bucket_image_ids,
+        positive_bucket_name=positive_split_name,
+    )
 
 
 def _merge_split_image_ids(
@@ -196,8 +318,13 @@ def _merge_split_image_ids(
 def _build_rule1_runtime(
     args: argparse.Namespace,
 ) -> tuple[Rule1Pipeline | None, str, str, str]:
-    if args.predicate_backend == "heuristic":
+    candidate_generator = _build_candidate_generator(args)
+
+    if args.predicate_backend == "heuristic" and candidate_generator is None:
         return None, "rule1_pipeline", "opencv_hog+heuristic_rule1", "rule1_smallloop"
+    if args.predicate_backend == "heuristic":
+        pipeline = Rule1Pipeline(candidate_generator=candidate_generator)
+        return pipeline, "rule1_pipeline", "opencv_hog+heuristic_rule1", "rule1_smallloop"
 
     if args.predicate_backend == "vlm":
         provider_catalog = load_provider_catalog(args.config_path)
@@ -209,7 +336,10 @@ def _build_rule1_runtime(
             model_name=model_name,
             provider_name=provider.name,
         )
-        pipeline = Rule1Pipeline(predicate_extractor=predicate_extractor)
+        pipeline = Rule1Pipeline(
+            candidate_generator=candidate_generator,
+            predicate_extractor=predicate_extractor,
+        )
         return (
             pipeline,
             f"rule1_pipeline_{provider.name}",
@@ -231,13 +361,26 @@ def _build_rule1_runtime(
     predicate_extractor = LocalQwenRule1PredicateExtractor(
         client=client,
         model_name=args.model_path,
+        candidate_batch_size=args.candidate_batch_size,
+        context_mode=args.predicate_context_mode,
     )
-    pipeline = Rule1Pipeline(predicate_extractor=predicate_extractor)
+    pipeline = Rule1Pipeline(
+        candidate_generator=candidate_generator,
+        predicate_extractor=predicate_extractor,
+    )
     return (
         pipeline,
         "rule1_pipeline_local_qwen",
         args.model_path,
         "rule1_smallloop_local_qwen",
+    )
+
+
+def _build_candidate_generator(args: argparse.Namespace):
+    if args.candidate_backend == "hog":
+        return None
+    return HogThenTorchvisionPersonCandidateGenerator(
+        score_threshold=args.torchvision_score_threshold,
     )
 
 

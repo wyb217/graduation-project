@@ -162,3 +162,70 @@ def test_local_qwen_complete_supports_generic_messages() -> None:
     assert captured["messages"][0]["role"] == "user"
     assert "token_type_ids" not in captured["generate_inputs"]
     assert captured["generated_ids_trimmed"] == [[13, 14]]
+
+
+def test_local_qwen_complete_batch_supports_multiple_message_sets() -> None:
+    """The batch completion helper should preserve conversation order."""
+
+    class FakeTensor:
+        def __init__(self, value):
+            self.value = value
+
+        def to(self, device: str):  # noqa: ANN001
+            return self
+
+        def __iter__(self):
+            return iter(self.value)
+
+        def __len__(self) -> int:
+            return len(self.value)
+
+    captured: dict[str, Any] = {}
+
+    class FakeProcessor:
+        def apply_chat_template(  # noqa: ANN001
+            self,
+            messages,
+            tokenize,
+            add_generation_prompt,
+            return_dict,
+            return_tensors,
+        ):
+            captured["messages"] = messages
+            return {
+                "input_ids": [[10, 11], [20, 21, 22]],
+                "pixel_values": FakeTensor("pixels"),
+                "token_type_ids": FakeTensor("token-types"),
+            }
+
+        def batch_decode(  # noqa: ANN001
+            self,
+            generated_ids_trimmed,
+            skip_special_tokens,
+            clean_up_tokenization_spaces,
+        ):
+            captured["generated_ids_trimmed"] = generated_ids_trimmed
+            return ["first response", "second response"]
+
+    class FakeModel:
+        device = "cuda:0"
+
+        def generate(self, **inputs):  # noqa: ANN003
+            captured["generate_inputs"] = inputs
+            return [[10, 11, 12], [20, 21, 22, 23, 24]]
+
+    client = LocalQwen3VLClient(LocalQwenLoadConfig(model_path="demo-model"))
+    client._processor = FakeProcessor()  # noqa: SLF001
+    client._model = FakeModel()  # noqa: SLF001
+
+    responses = client.complete_batch(
+        messages_batch=[
+            [{"role": "user", "content": [{"type": "text", "text": "first"}]}],
+            [{"role": "user", "content": [{"type": "text", "text": "second"}]}],
+        ]
+    )
+
+    assert responses == ["first response", "second response"]
+    assert len(captured["messages"]) == 2
+    assert "token_type_ids" not in captured["generate_inputs"]
+    assert captured["generated_ids_trimmed"] == [[12], [23, 24]]

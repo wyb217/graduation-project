@@ -6,7 +6,7 @@ import io
 import json
 import re
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 
 from benchmark.constructionsite10k.types import ConstructionSiteSample
 from point1.baselines.local_qwen import LocalQwen3VLClient
@@ -15,6 +15,7 @@ from point1.predicates.rule1 import Rule1PredicateResult, Rule1PredicateSet
 from point1.predicates.rule1_vlm import RULE1_VLM_SYSTEM_PROMPT, RULE1_VLM_USER_PROMPT
 
 VALID_STATES = {"yes", "no", "unknown"}
+CONTEXT_MODES = {"crop_only", "crop_with_full_image"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,6 +26,14 @@ class LocalQwenRule1PredicateExtractor:
     model_name: str
     min_candidate_width: int = 24
     min_candidate_height: int = 48
+    candidate_batch_size: int = 1
+    context_mode: Literal["crop_only", "crop_with_full_image"] = "crop_only"
+
+    def __post_init__(self) -> None:
+        if self.candidate_batch_size <= 0:
+            raise ValueError("candidate_batch_size must be positive.")
+        if self.context_mode not in CONTEXT_MODES:
+            raise ValueError(f"Unsupported context_mode: {self.context_mode}")
 
     def extract(
         self,
@@ -32,61 +41,106 @@ class LocalQwenRule1PredicateExtractor:
         candidate: PersonCandidate,
     ) -> Rule1PredicateSet:
         """Return a Rule 1 predicate bundle for one person candidate."""
+        return self.extract_many(sample, (candidate,))[0]
+
+    def extract_many(
+        self,
+        sample: ConstructionSiteSample,
+        candidates: tuple[PersonCandidate, ...],
+    ) -> tuple[Rule1PredicateSet, ...]:
+        """Return Rule 1 predicate bundles for multiple candidates from one image."""
+        if not candidates:
+            return ()
+
         image = _load_pil_image(sample)
-        candidate_crop = _crop_bbox(image, candidate.bbox)
-        crop_width, crop_height = candidate_crop.size
+        predicate_sets_by_candidate_id: dict[str, Rule1PredicateSet] = {}
+        valid_candidates: list[tuple[PersonCandidate, object]] = []
 
-        if crop_width < self.min_candidate_width or crop_height < self.min_candidate_height:
-            return _build_unknown_predicate_set(
-                candidate=candidate,
-                reason="The person crop is too small for reliable local-Qwen PPE inspection.",
-            )
+        for candidate in candidates:
+            candidate_crop = _crop_bbox(image, candidate.bbox)
+            crop_width, crop_height = candidate_crop.size
+            if crop_width < self.min_candidate_width or crop_height < self.min_candidate_height:
+                predicate_sets_by_candidate_id[candidate.candidate_id] = (
+                    _build_unknown_predicate_set(
+                        candidate=candidate,
+                        reason=(
+                            "The person crop is too small for reliable local-Qwen PPE inspection."
+                        ),
+                    )
+                )
+                continue
+            valid_candidates.append((candidate, candidate_crop))
 
-        raw_response = self.client.complete(
-            messages=_build_messages(candidate_crop, candidate_id=candidate.candidate_id)
+        if hasattr(self.client, "complete_batch") and self.candidate_batch_size > 1:
+            for batch_start in range(0, len(valid_candidates), self.candidate_batch_size):
+                batch = valid_candidates[batch_start : batch_start + self.candidate_batch_size]
+                messages_batch = [
+                    _build_messages(
+                        candidate_crop,
+                        candidate_id=candidate.candidate_id,
+                        candidate_bbox=candidate.bbox,
+                        full_image=(image if self.context_mode == "crop_with_full_image" else None),
+                    )
+                    for candidate, candidate_crop in batch
+                ]
+                raw_responses = self.client.complete_batch(messages_batch=messages_batch)
+                for (candidate, _candidate_crop), raw_response in zip(
+                    batch,
+                    raw_responses,
+                    strict=True,
+                ):
+                    predicate_sets_by_candidate_id[candidate.candidate_id] = _build_predicate_set(
+                        candidate=candidate,
+                        raw_response=raw_response,
+                    )
+        else:
+            for candidate, candidate_crop in valid_candidates:
+                raw_response = self.client.complete(
+                    messages=_build_messages(
+                        candidate_crop,
+                        candidate_id=candidate.candidate_id,
+                        candidate_bbox=candidate.bbox,
+                        full_image=(image if self.context_mode == "crop_with_full_image" else None),
+                    )
+                )
+                predicate_sets_by_candidate_id[candidate.candidate_id] = _build_predicate_set(
+                    candidate=candidate,
+                    raw_response=raw_response,
+                )
+
+        return tuple(
+            predicate_sets_by_candidate_id[candidate.candidate_id] for candidate in candidates
         )
-        payload = _load_json_payload(raw_response)
-        return Rule1PredicateSet(
-            candidate_id=candidate.candidate_id,
-            person_visible=_parse_predicate_result(
-                payload=payload,
-                field_name="person_visible",
-                candidate=candidate,
-            ),
-            ppe_applicable=_parse_predicate_result(
-                payload=payload,
-                field_name="ppe_applicable",
-                candidate=candidate,
-            ),
-            head_region_visible=_parse_predicate_result(
-                payload=payload,
-                field_name="head_region_visible",
-                candidate=candidate,
-            ),
-            hard_hat_visible=_parse_predicate_result(
-                payload=payload,
-                field_name="hard_hat_visible",
-                candidate=candidate,
-            ),
-            upper_body_covered=_parse_predicate_result(
-                payload=payload,
-                field_name="upper_body_covered",
-                candidate=candidate,
-            ),
-            lower_body_covered=_parse_predicate_result(
-                payload=payload,
-                field_name="lower_body_covered",
-                candidate=candidate,
-            ),
-            toe_covered=_parse_predicate_result(
-                payload=payload,
-                field_name="toe_covered",
-                candidate=candidate,
-            ),
+
+
+def _build_messages(
+    image,
+    *,
+    candidate_id: str,
+    candidate_bbox,
+    full_image=None,
+) -> list[dict[str, object]]:
+    prompt_text = (
+        f"{RULE1_VLM_USER_PROMPT}\n"
+        f"Candidate ID: {candidate_id}\n"
+        f"Candidate bbox (normalized xyxy): {candidate_bbox.to_list()}\n"
+    )
+    if full_image is None:
+        content = [
+            {"type": "image", "image": image},
+            {"type": "text", "text": prompt_text},
+        ]
+    else:
+        prompt_text += (
+            "The first image is the worker crop. "
+            "The second image is the full scene context. "
+            "Judge only the candidate worker indicated by the crop and bbox.\n"
         )
-
-
-def _build_messages(image, *, candidate_id: str) -> list[dict[str, object]]:
+        content = [
+            {"type": "image", "image": image},
+            {"type": "image", "image": full_image},
+            {"type": "text", "text": prompt_text},
+        ]
     return [
         {
             "role": "system",
@@ -94,12 +148,55 @@ def _build_messages(image, *, candidate_id: str) -> list[dict[str, object]]:
         },
         {
             "role": "user",
-            "content": [
-                {"type": "image", "image": image},
-                {"type": "text", "text": f"{RULE1_VLM_USER_PROMPT}\nCandidate ID: {candidate_id}"},
-            ],
+            "content": content,
         },
     ]
+
+
+def _build_predicate_set(
+    *,
+    candidate: PersonCandidate,
+    raw_response: str,
+) -> Rule1PredicateSet:
+    payload = _load_json_payload(raw_response)
+    return Rule1PredicateSet(
+        candidate_id=candidate.candidate_id,
+        person_visible=_parse_predicate_result(
+            payload=payload,
+            field_name="person_visible",
+            candidate=candidate,
+        ),
+        ppe_applicable=_parse_predicate_result(
+            payload=payload,
+            field_name="ppe_applicable",
+            candidate=candidate,
+        ),
+        head_region_visible=_parse_predicate_result(
+            payload=payload,
+            field_name="head_region_visible",
+            candidate=candidate,
+        ),
+        hard_hat_visible=_parse_predicate_result(
+            payload=payload,
+            field_name="hard_hat_visible",
+            candidate=candidate,
+        ),
+        upper_body_covered=_parse_predicate_result(
+            payload=payload,
+            field_name="upper_body_covered",
+            candidate=candidate,
+        ),
+        lower_body_covered=_parse_predicate_result(
+            payload=payload,
+            field_name="lower_body_covered",
+            candidate=candidate,
+        ),
+        toe_covered=_parse_predicate_result(
+            payload=payload,
+            field_name="toe_covered",
+            candidate=candidate,
+        ),
+    )
 
 
 def _build_unknown_predicate_set(

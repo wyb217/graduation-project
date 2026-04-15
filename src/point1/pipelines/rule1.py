@@ -58,12 +58,16 @@ class Rule1Pipeline:
                 image_prediction=image_prediction,
             )
 
-        candidate_predictions = tuple(
-            execute_rule1_candidate(
-                candidate,
-                self._predicate_extractor.extract(sample, candidate),
+        batched_extract = getattr(self._predicate_extractor, "extract_many", None)
+        if callable(batched_extract):
+            predicate_sets = batched_extract(sample, candidates)
+        else:
+            predicate_sets = tuple(
+                self._predicate_extractor.extract(sample, candidate) for candidate in candidates
             )
-            for candidate in candidates
+        candidate_predictions = tuple(
+            execute_rule1_candidate(candidate, predicate_set)
+            for candidate, predicate_set in zip(candidates, predicate_sets, strict=True)
         )
         image_prediction = self._aggregate_image_prediction(candidate_predictions)
         return Rule1PipelineResult(

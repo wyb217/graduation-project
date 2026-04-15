@@ -299,6 +299,15 @@ baseline 稳定性都会明显下降。
 
 这说明当前 author-style full test 路径已经稳定，不再像早期 structured baseline 那样主要受协议解析问题限制。
 
+说明：
+
+- `directcls-localqwen-authorvqa-fulltest.summary.json`
+- `fiveshotcls-localqwen-authorvqa-fulltest.summary.json`
+
+这两个 summary 主要记录 full test 运行是否成功；
+下面的分 rule precision / recall / F1 表，是基于 full test raw JSON 再通过
+`scripts/analyze_point1_baselines.py` 对 `test.parquet` 真值重算得到。
+
 ### 7.2 论文风格分 rule 表
 
 > 表：BML Local Qwen3-VL 在 ConstructionSite10k full test 上的 author-style classification-only 结果
@@ -351,11 +360,152 @@ baseline 稳定性都会明显下降。
 
 ---
 
-## 8. 当前评测出口状态
+## 8. Rule 1 主方法结果：BML Local Qwen predicate
+
+除了 black-box baseline 之外，当前仓库还额外补跑了 Rule 1 的主方法小闭环：
+
+`candidate -> predicate -> executor -> explanation`
+
+这里的 predicate backend 使用的是：
+
+- **BML 本地 Qwen3-VL**
+
+说明：
+
+- candidate generation 当前仍是显式前端 detector；
+- predicate extraction 改成对 person crop 做 local Qwen 判别；
+- executor / explanation 仍保持显式规则层；
+- 这组结果更适合作为 **Point 1 主方法阶段性结果**，而不是替代前面的 black-box baseline 主表。
+
+### 8.1 26 张（clean + rule1）
+
+在加入 `hog_then_torchvision` detector fallback 之后，26 张结果更新为：
+
+- parse success rate: `26 / 26 = 100%`
+- precision: `1.000`
+- recall: `0.846`
+- F1: `0.917`
+- FP: `0`
+- unknown rate: `0.462`
+
+与上一版 local Qwen Rule 1 小闭环相比：
+
+- recall：`0.231 -> 0.846`
+- F1：`0.375 -> 0.917`
+- unknown rate：`0.769 -> 0.462`
+
+这说明 detector fallback 在 `clean + rule1` 小闭环上已经显著缓解了 `unknown(person_detection)`。
+
+### 8.2 65 张（balanced_test_13x5）
+
+在 65 张完整 quick-test 上，`hog_then_torchvision + local_qwen` 的结果为：
+
+- parse success rate: `65 / 65 = 100%`
+- precision: `0.917`
+- recall: `0.846`
+- F1: `0.880`
+- TP: `11`
+- FP: `1`
+- FN: `2`
+- negative hit rate: `0.385`
+- unknown rate: `0.508`
+
+bucket 命中率：
+
+- clean: `0.231`
+- rule1: `0.846`
+- rule2: `0.462`
+- rule3: `0.308`
+- rule4: `0.538`
+
+和 detector 改进前的 local Qwen 65 张结果相比：
+
+- recall：`0.231 -> 0.846`
+- F1：`0.375 -> 0.880`
+- unknown rate：`0.662 -> 0.508`
+- `person_detection` unknown：`34 -> 7`
+
+这组 65 张结果最重要的现象是：
+
+1. **Rule 1 recall 出现了质变**
+   - 从 `3 / 13` 提升到 `11 / 13`
+2. **只引入了 1 个额外误报**
+   - FP 落在 `rule4` bucket
+   - precision 仍保持在 `0.917`
+3. **detector 才是此前的主瓶颈**
+   - fallback 打通后，大量原本的 `unknown(person_detection)` 被转成了可判别候选
+4. **系统瓶颈已经从 detector 转向局部可见性**
+   - 当前更常见的 unknown 已逐步转成 `toe_covered` / `lower_body_covered` / `hard_hat_visible`
+
+换句话说，这组结果的真正含义已经从：
+
+> “predicate 很稳，但 detector 找不到人”
+
+变成了：
+
+> detector recall 被明显修复后，local Qwen predicate + gate + executor 已经能够在 Rule 1 上给出较强的阶段性结果。
+
+### 8.3 Full test（3004）
+
+在 3004 张 full test 上，`hog_then_torchvision + local_qwen` 的 Rule 1 主方法结果为：
+
+- parse success rate: `3004 / 3004 = 100%`
+- precision: `0.633`
+- recall: `0.549`
+- F1: `0.588`
+- TP: `178`
+- FP: `103`
+- FN: `146`
+- unknown rate: `0.572`
+
+这组 full test 结果有几个值得明确写下来的现象：
+
+1. **Rule 1 主方法在 full test 上仍显著优于 black-box classification-only**
+   - 对比 direct classification-only：
+     - precision：`0.197 -> 0.633`
+     - F1：`0.280 -> 0.588`
+     - FP：`634 -> 103`
+   - 对比 5-shot classification-only：
+     - precision：`0.206 -> 0.633`
+     - F1：`0.336 -> 0.588`
+     - FP：`1145 -> 103`
+
+2. **full test 证明这条方法链不是只在 quick-test 上有效**
+   - 26 张与 65 张结果已经证明 detector fallback 能显著修复 recall
+   - 3004 张结果进一步说明，这条显式 `candidate -> predicate -> executor -> explanation` 主链在正式 full test 上仍能保持较强可控性
+
+3. **当前瓶颈已经不是“能不能找到人”，而是“能不能减少 abstention”**
+   - full test precision 已经明显优于 black-box baseline
+   - 但 unknown rate 仍有 `0.572`
+   - 这意味着当前主问题已经从“检测完全失败”转成“局部可见性不足时系统过于保守”
+
+4. **当前主方法的价值在于 controllability，不是单纯追求最高 recall**
+   - black-box 5-shot 的 rule1 recall 可到 `0.917`
+   - 但它伴随 `1145` 个 FP，precision 仅 `0.206`
+   - 当前 Rule 1 主方法虽然 recall 更低，但把 FP 压到了 `103`，更符合 Point 1 对可审计性与可控性的要求
+
+### 8.4 当前结论
+
+Rule 1 主方法当前已经具备一个更清晰的阶段性判断：
+
+1. **candidate detector recall 的确是此前的核心瓶颈，但已不再是唯一主问题**
+   - quick-test 已经证明 detector fallback 显著修复了 `unknown(person_detection)`
+   - full test 进一步说明，这条链已经能稳定产出正式主结果
+
+2. `hog_then_torchvision + local_qwen` 已经是当前最值得继续推进的 Rule 1 主线
+
+3. 当前最值得做的事，不再是“先把 Rule 1 full test 跑出来”，而是：
+   - 围绕 `103 FP / 146 FN / 1718 unknown` 做 full test error anatomy
+   - 优先压缩高 unknown 带来的 coverage 损失
+   - 在不破坏显式 executor / explanation 的前提下继续提速与补上下文
+
+---
+
+## 9. 当前评测出口状态
 
 当前仓库已经具备两层结果消费能力：
 
-### 8.1 内部 summary / comparison
+### 9.1 内部 summary / comparison
 
 用于快速看：
 
@@ -368,7 +518,7 @@ baseline 稳定性都会明显下降。
 
 - `scripts/analyze_point1_baselines.py`
 
-### 8.2 official eval bridge
+### 9.2 official eval bridge
 
 仓库现在已经补上了一个最小 official eval bridge。
 它的作用不是“重新评分”，而是：
@@ -389,20 +539,33 @@ baseline 稳定性都会明显下降。
 
 ---
 
-## 9. 下一步建议
+## 10. 下一步建议
 
-1. 将这组 full test 结果整理为论文主表候选版本，并补充正式表题/图注
-2. 专门分析 Rule 4 在 direct / 5-shot 下 precision 极低的原因
-3. 用新的 official eval bridge，把现有 baseline 统一导出成官方风格预测文件
-4. 明确记录哪些结果用于论文主表，哪些结果只作为 error analysis
-5. 在 baseline 口径稳定后，再进入 Point 1 主方法第一条真实链路：
-   - Rule 1 `candidate -> predicate -> executor -> explanation`
+1. 基于已完成的 Rule 1 full test，做第一轮 **error anatomy**
+   - 优先拆 `103 FP`
+   - 再拆 `146 FN`
+   - 最后分析 `1718 unknown`
+2. 把当前 Rule 1 full test 的 failure export 做成稳定工作流
+   - 明确保留样本 ID、bucket、reason_text、unknown_items、target_bbox
+   - 支持后续集中排查 `person_detection`、`toe_covered`、`lower_body_covered` 等高频失败模式
+3. 优化当前主线的吞吐与可观测性
+   - 增加 full test 进度落盘 / heartbeat / checkpoint
+   - 评估 candidate batching、并行 crop、局部谓词提取吞吐优化
+4. 在不退回 black-box 的前提下，评估“candidate crop + full image context” 的谓词提取方式
+   - 保留 candidate-local executor
+   - 只把整图作为辅助上下文，不让主输出退化成整图自由问答
+5. Rule 1 路径稳定后，再继续进入：
+   - Rule 4 pair reasoning
+   - edge-related modules
+   - Rule 2 / Rule 3
 
 ---
 
-## 10. 当前建议保留的核心结果文件
+## 11. 当前建议保留的核心结果文件
 
-建议保留：
+建议优先保留下面几组“当前仍在叙事主线上”的结果文件：
+
+### 11.1 Black-box baseline 对照组
 
 - `artifacts/point1/direct-modelscope-balanced_test_13x5-repair.json`
 - `artifacts/point1/direct-modelscope-balanced_test_13x5-repair.summary.json`
@@ -419,17 +582,32 @@ baseline 稳定性都会明显下降。
 - `artifacts/point1/fiveshot-localqwen-balanced_test_13x5.eval-summary.json`
 - `artifacts/point1/directcls-localqwen-balanced_test_13x5.json`
 - `artifacts/point1/directcls-localqwen-balanced_test_13x5.summary.json`
-- `artifacts/point1/directcls-localqwen-authorvqa-fulltest.json`
-- `artifacts/point1/directcls-localqwen-authorvqa-fulltest.summary.json`
 - `artifacts/point1/fiveshotcls-localqwen-balanced_test_13x5.json`
 - `artifacts/point1/fiveshotcls-localqwen-balanced_test_13x5.summary.json`
-- `artifacts/point1/fiveshotcls-localqwen-authorvqa-fulltest.json`
-- `artifacts/point1/fiveshotcls-localqwen-authorvqa-fulltest.summary.json`
 - `artifacts/point1/localqwen-cls-comparison.json`
-- `artifacts/point1/localqwen-authorvqa-fulltest-comparison.json`
 - `artifacts/point1/localqwen-structured-comparison.json`
 
-如果后续开始统一导出官方风格预测文件，建议并列保留：
+### 11.2 Black-box full test 对照组
+
+- `artifacts/point1/directcls-localqwen-authorvqa-fulltest.json`
+- `artifacts/point1/directcls-localqwen-authorvqa-fulltest.summary.json`
+- `artifacts/point1/fiveshotcls-localqwen-authorvqa-fulltest.json`
+- `artifacts/point1/fiveshotcls-localqwen-authorvqa-fulltest.summary.json`
+
+### 11.3 Rule 1 主方法关键阶段结果
+
+- `artifacts/point1/rule1-smallloop-localqwen-balanced_test_clean_rule1.json`
+- `artifacts/point1/rule1-smallloop-localqwen-balanced_test_clean_rule1.summary.json`
+- `artifacts/point1/rule1-smallloop-localqwen-balanced_test_13x5.json`
+- `artifacts/point1/rule1-smallloop-localqwen-balanced_test_13x5.summary.json`
+- `artifacts/point1/rule1-smallloop-localqwen-hybriddet-balanced_test_clean_rule1.json`
+- `artifacts/point1/rule1-smallloop-localqwen-hybriddet-balanced_test_clean_rule1.summary.json`
+- `artifacts/point1/rule1-smallloop-localqwen-hybriddet-balanced_test_13x5.json`
+- `artifacts/point1/rule1-smallloop-localqwen-hybriddet-balanced_test_13x5.summary.json`
+- `artifacts/point1/rule1-smallloop-localqwen-hybriddet-fulltest.json`
+- `artifacts/point1/rule1-smallloop-localqwen-hybriddet-fulltest.summary.json`
+
+如果后续继续统一导出官方风格预测文件，再并列保留：
 
 - `*.official.json`
 - `*.eval-summary.json`
