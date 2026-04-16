@@ -94,6 +94,42 @@ export QWEN3_VL_ROOT=/home/bml/storage/qwen3_models
 2. black-box baseline 优先走 `scripts/run_point1_local_qwen_baseline.py`
 3. 只有在需要做远端 provider 对照时，再使用 `modelscope`
 
+## BML 平台 PyTorch / torchvision 权重缓存约定
+
+如果你在 BML 上使用：
+
+- `hog_then_torchvision`
+- 本地 Qwen
+- 任何依赖 `torch` / `torchvision` 预训练权重的路径
+
+推荐把 PyTorch 的权重缓存目录固定到一个**持久化路径**，避免 detector 在新容器或新会话里反复下载：
+
+```bash
+export TORCH_HOME=/home/bml/storage/torch_cache
+mkdir -p "${TORCH_HOME}/hub/checkpoints"
+```
+
+当前 Rule 1 detector fallback 依赖的 torchvision 权重会缓存在：
+
+```bash
+${TORCH_HOME}/hub/checkpoints
+```
+
+如果你想在长任务前先手动预下载 Faster R-CNN fallback 权重，可以执行：
+
+```bash
+wget -c https://download.pytorch.org/models/fasterrcnn_resnet50_fpn_v2_coco-dd69338a.pth \
+  -O "${TORCH_HOME}/hub/checkpoints/fasterrcnn_resnet50_fpn_v2_coco-dd69338a.pth"
+```
+
+当前在 BML 上推进 Rule 1 时，推荐至少先设置下面三个环境变量：
+
+```bash
+export CS10K_ROOT=/home/bml/storage/constructionsite10k
+export QWEN3_VL_ROOT=/home/bml/storage/qwen3_models
+export TORCH_HOME=/home/bml/storage/torch_cache
+```
+
 ## 最常用的日常命令
 
 如果你不想记很多命令，直接用：
@@ -441,65 +477,70 @@ python scripts/run_point1_rule1_pipeline.py \
 
 ```bash
 export QWEN3_VL_ROOT=/home/bml/storage/qwen3_models
+export TORCH_HOME=/home/bml/storage/torch_cache
 
 python scripts/run_point1_rule1_pipeline.py \
   --target-parquet "${CS10K_ROOT}/test.parquet" \
-  --registry src/benchmark/splits/constructionsite10k_balanced_test_13x5.json \
-  --target-split-names \
-    balanced_test_13x5_clean \
-    balanced_test_13x5_rule2 \
-    balanced_test_13x5_rule3 \
-    balanced_test_13x5_rule4 \
-    balanced_test_13x5_rule1 \
-  --positive-split-name balanced_test_13x5_rule1 \
+  --target-preset balanced65 \
   --predicate-backend local_qwen \
   --model-path "${QWEN3_VL_ROOT}" \
-  --output artifacts/point1/rule1-smallloop-localqwen-balanced_test_13x5.json
+  --crop-padding-profile none \
+  --run-name stable
 ```
 
 如果你想在 BML 上直接跑 **65 张 local Qwen + detector fallback** 版，可以用：
 
 ```bash
 export QWEN3_VL_ROOT=/home/bml/storage/qwen3_models
+export TORCH_HOME=/home/bml/storage/torch_cache
 
 python scripts/run_point1_rule1_pipeline.py \
   --target-parquet "${CS10K_ROOT}/test.parquet" \
-  --registry src/benchmark/splits/constructionsite10k_balanced_test_13x5.json \
-  --target-split-names \
-    balanced_test_13x5_clean \
-    balanced_test_13x5_rule2 \
-    balanced_test_13x5_rule3 \
-    balanced_test_13x5_rule4 \
-    balanced_test_13x5_rule1 \
-  --positive-split-name balanced_test_13x5_rule1 \
+  --target-preset balanced65 \
   --candidate-backend hog_then_torchvision \
   --predicate-backend local_qwen \
   --model-path "${QWEN3_VL_ROOT}" \
-  --output artifacts/point1/rule1-smallloop-localqwen-hybriddet-balanced_test_13x5.json
+  --crop-padding-profile none \
+  --run-name stable
 ```
 
 如果你想把当前最佳 Rule 1 路径扩到 **full test 3004**，可以直接用：
 
 ```bash
 export QWEN3_VL_ROOT=/home/bml/storage/qwen3_models
+export TORCH_HOME=/home/bml/storage/torch_cache
 
 python scripts/run_point1_rule1_pipeline.py \
-  --fulltest \
   --target-parquet "${CS10K_ROOT}/test.parquet" \
+  --target-preset fulltest \
   --candidate-backend hog_then_torchvision \
   --predicate-backend local_qwen \
   --model-path "${QWEN3_VL_ROOT}" \
-  --candidate-batch-size 4 \
+  --candidate-batch-size 1 \
   --predicate-context-mode crop_only \
-  --progress-output artifacts/point1/rule1-smallloop-localqwen-hybriddet-fulltest.progress.json \
-  --checkpoint-output artifacts/point1/rule1-smallloop-localqwen-hybriddet-fulltest.checkpoint.json \
-  --checkpoint-every 100 \
-  --failure-output artifacts/point1/rule1-smallloop-localqwen-hybriddet-fulltest.failures.json \
-  --output artifacts/point1/rule1-smallloop-localqwen-hybriddet-fulltest.json \
-  --summary-output artifacts/point1/rule1-smallloop-localqwen-hybriddet-fulltest.summary.json
+  --crop-padding-profile none \
+  --run-name stable
 ```
 
-这里的 `summary.json` 是 Rule 1 专用 fulltest summary，关注：
+当你使用：
+
+- `--target-preset balanced65`
+- `--run-name stable`
+
+脚本会自动展开固定的 `balanced_test_13x5` 目标配置，并自动生成：
+
+- `artifacts/point1/<stem>.json`
+- `artifacts/point1/<stem>.summary.json`
+- `artifacts/point1/<stem>.progress.json`
+- `artifacts/point1/<stem>.checkpoint.json`
+- `artifacts/point1/<stem>.failures.json`
+
+例如：
+
+- `rule1-smallloop-localqwen-hybriddet-balanced65-stable.json`
+- `rule1-smallloop-localqwen-hybriddet-balanced65-stable.summary.json`
+
+这里的 `summary.json` 仍然是 Rule 1 专用 summary，关注：
 
 - `rule1_precision / recall / f1`
 - `rule1_tp / fp / fn`
@@ -515,9 +556,24 @@ python scripts/run_point1_rule1_pipeline.py \
 新增可选性能/建模参数：
 
 - `--candidate-batch-size`：同一张图上对多个 person crop 做 local Qwen micro-batch
+  - 当前默认建议先用 `1`，把它作为稳定研究口径
+  - `>1` 仍属于实验性提速选项，建议先在 65 张子集上验证再上 full test
 - `--predicate-context-mode crop_only|crop_with_full_image`：
   - `crop_only`：只看 candidate crop
   - `crop_with_full_image`：同时附带整图上下文，但仍保持 candidate-local predicate / executor
+- `--crop-padding-profile none|rule1_ppe`：
+  - `none`：默认稳定口径，不扩张 person crop
+  - `rule1_ppe`：实验性地给头部和脚部更多上下文，用于尝试降低 `hard_hat_visible / lower_body_covered / toe_covered` 的 unknown
+  - 当前建议先在 `balanced_test_13x5` 上验证后，再决定是否扩到 full test
+
+如果你需要继续使用底层完整参数：
+
+- `--registry`
+- `--target-split-names`
+- `--positive-split-name`
+- `--output / --summary-output / --progress-output / --checkpoint-output / --failure-output`
+
+它们依然完全可用；`target-preset + run-name` 只是更适合日常 BML 运行的短入口。
 
 如果你还要继续导出 official-style 预测文件，可以接着运行：
 

@@ -102,7 +102,32 @@ conda activate graduation-project
 python scripts/dev.py all
 ```
 
-### 2. 重新生成快速测试子集
+### 2. 跑单张图 Rule 1 并导出 bbox 可视化
+
+```bash
+conda activate graduation-project
+python scripts/run_point1_rule1_single_image.py \
+  --image-path /path/to/demo.jpg \
+  --output artifacts/point1/ad_hoc/demo.rule1.json
+```
+
+如果你在 BML 上跑当前推荐主线：
+
+```bash
+export QWEN3_VL_ROOT=/home/bml/storage/qwen3_models
+export TORCH_HOME=/home/bml/storage/torch_cache
+
+python scripts/run_point1_rule1_single_image.py \
+  --image-path /path/to/demo.jpg \
+  --candidate-backend hog_then_torchvision \
+  --predicate-backend local_qwen \
+  --model-path "${QWEN3_VL_ROOT}" \
+  --output artifacts/point1/ad_hoc/demo.rule1.json
+```
+
+脚本会同时生成 JSON 结果和 `*.visualized.jpg|png` 标注图。
+
+### 3. 重新生成快速测试子集
 
 ```bash
 conda activate graduation-project
