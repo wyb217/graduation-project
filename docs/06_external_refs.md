@@ -4,11 +4,11 @@
 以下链接建议写进仓库文档，并在真正开工前固定版本（最好补 commit/tag/访问说明）。
 
 ### A. ConstructionSite10k 数据与论文
-1. Dataset card  
+1. Dataset card
    https://huggingface.co/datasets/LouisChen15/ConstructionSite
-2. Paper  
+2. Paper
    https://arxiv.org/abs/2508.11011
-3. Official implementation / evaluation repo  
+3. Official implementation / evaluation repo
    https://github.com/LouisChen15/ConstructionSite-10k-Implementation
 
 ### B. 你自己的研究上下文（建议整理成 repo 内文档，而不是原样丢 PDF）

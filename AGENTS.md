@@ -4,7 +4,7 @@
 这是一个硕士毕业设计/论文项目，主题为施工场景安全隐患识别。
 论文结构固定为：
 1. Point 1：ConstructionSite10k 四规则闭域、单图、证据链驱动、可解释违规识别。
-2. Point 2：知识增强的 RAG / PEFT(LoRA/QLoRA) 协同方法，面向典型规则违规识别的跨场景鲁棒性提升。
+2. Point 2：知识增强的 RAG / PEFT(LoRA/QLoRA) 协同方法，面向典型规则违规识别中的知识源变化与规则表述变化稳健性提升。
 3. Point 3：原型系统与工程闭环验证。
 
 ## 最高优先级约束
@@ -12,6 +12,7 @@
 2. 代码必须可读、清晰、模块边界明确，优先简单直接的实现。
 3. 优先保证 benchmark 口径正确，再优化模型复杂度。
 4. 不得为了“更聪明”而牺牲可复现性、可审计性与可测试性。
+5. 保持严格客观，不得附和，对于一些过于理想化的情况要予以严格的驳斥
 
 ## 强制架构约束
 - `src/point1` 只允许依赖：`src/common`、`src/benchmark`、`src/eval`。
@@ -30,37 +31,19 @@
 ## Point 2 范围
 - Point 2 研究“规则知识增强 + RAG + LoRA/QLoRA / PEFT”的协同作用。
 - 允许接入企业制度、国标条款、相似案例检索与参数高效微调。
-- Point 2 的目标是跨场景鲁棒性、precision / grounding IoU / 解释一致性的提升。
+- Point 2 的核心目标是知识源变化、规则表述变化下的稳健识别，并将 illumination 等场景属性最多作为辅助分层维度，而不是主 claim。
 - Point 2 不得破坏 Point 1 的闭域 benchmark 实验口径。
+- 在没有额外数据与明确操作化定义时，不要把 Point 2 笼统表述为“跨场景鲁棒性”。
 
-## Point 1 baseline / BML 运行约定
-- Point 1 baseline 当前优先支持 **本地 Qwen** 路径；BML 默认模型路径约定为：
-  - `/home/bml/storage/qwen3_models`
-- **BML Git 远端约定**：
-  - BML 平台上的仓库是直接从 **gitee clone** 下来的；
-  - 因此在 BML 上默认应视 `origin = gitee`；
-  - 在 BML 上给出 git 指令时，默认优先使用：
-    - `git fetch origin`
-    - `git pull origin <branch>`
-    - `git push origin <branch>`
-  - 不要把 BML 上的 `origin` 默认理解成 GitHub。
-- 与 Point 1 baseline 相关的实验，默认先做 smoke test，再做 full test：
-  - 先用 `--limit 5` 或 `--limit 20` 验证 parse / output / summary 正常；
-  - 确认无误后再跑完整 `test.parquet`。
-- 如果目标是补 **per-rule precision / recall / F1** 表，默认优先使用：
-  - `--task-profile classification_only`
-  - `structured` 主要用于 bbox / grounding 相关分析，不是默认 first pass。
-- subset 与 full test 口径必须区分：
-  - `balanced_test_13x5`：仅用于 smoke test、prompt 调试、快速对比；
-  - `test.parquet`：用于正式 full test 主表与分 rule 指标。
-- 当需求包含“全测试集 / full test / 分 rule 表”时，默认应走 full test，不要自动退回 subset。
-- 仓库支持 `--prompt-style author_vqa`，用于接近作者仓库的 VQA prompt 契约。
-- 作者版本 5-shot 默认采用 **无泄漏版**：
-  - direct：使用作者 prompt；
-  - five-shot：使用作者 prompt 模板，但 few-shot 示例必须来自 **train-only 固定样本**。
-- 官方仓库中的 5-shot 示例来自 `test_split`；默认实现不得把这些 test 示例作为主 benchmark 的 in-context examples。
-- 如果以后需要“严格照搬作者 test-shot”的实验，必须作为单独显式 profile / 单独实验存在，不能覆盖默认口径。
-- 当前默认 few-shot 示例必须固定，不允许每轮随机抽样；若使用 `author_train_mimic`，应继续保持 train-only 固定 image IDs 策略。
+## 运行环境事实
+- 默认重实验平台是 BML；本地开发机主要用于代码、文档与轻量验证。
+- ConstructionSite10k 默认数据根目录：`/home/bml/storage/constructionsite10k`
+- BML 本地 Qwen 默认模型目录：`/home/bml/storage/qwen3_models`
+- PyTorch / torchvision 权重缓存默认目录：`/home/bml/storage/torch_cache`
+- 当前 Rule 1 detector fallback 的权重缓存目录：`${TORCH_HOME}/hub/checkpoints`
+- 当前本地仓库远端默认是：`origin=GitHub`、`gitee=Gitee`；正常更新后默认同时推送两端。
+- BML 上的 clone 可能来自 Gitee，此时 `origin` 可能已经是 Gitee；给出 git 命令前先检查 `git remote -v`。
+- 更详细的运行约定统一记录在 `docs/00_project_context.md`。
 
 ## 代码风格
 - 使用 Python `src/` 布局。
@@ -96,10 +79,11 @@
 - 禁止把旧仓库的历史耦合结构直接带入新仓库。
 
 ## 优先阅读顺序
-1. `docs/01_project_scope.md`
-2. `docs/02_repo_blueprint.md`
-3. `docs/03_benchmark_constructionsite10k.md`
-4. `docs/04_point1_spec.md`
-5. `docs/05_point2_spec.md`
-6. `docs/07_build_sequence.md`
-7. `code_review.md`
+1. `docs/00_project_context.md`
+2. `docs/01_project_scope.md`
+3. `docs/02_repo_blueprint.md`
+4. `docs/03_benchmark_constructionsite10k.md`
+5. `docs/04_point1_spec.md`
+6. `docs/05_point2_spec.md`
+7. `docs/07_build_sequence.md`
+8. `code_review.md`
