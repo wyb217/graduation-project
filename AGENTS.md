@@ -4,7 +4,7 @@
 这是一个硕士毕业设计/论文项目，主题为施工场景安全隐患识别。
 论文结构固定为：
 1. Point 1：ConstructionSite10k 四规则闭域、单图、证据链驱动、可解释违规识别。
-2. Point 2：知识增强的 RAG / PEFT(LoRA/QLoRA) 协同方法，面向典型规则违规识别的跨场景鲁棒性提升。
+2. Point 2：知识增强的 RAG / PEFT(LoRA/QLoRA) 协同方法，面向典型规则违规识别中的知识源变化与规则表述变化稳健性提升。
 3. Point 3：原型系统与工程闭环验证。
 
 ## 最高优先级约束
@@ -30,8 +30,9 @@
 ## Point 2 范围
 - Point 2 研究“规则知识增强 + RAG + LoRA/QLoRA / PEFT”的协同作用。
 - 允许接入企业制度、国标条款、相似案例检索与参数高效微调。
-- Point 2 的目标是跨场景鲁棒性、precision / grounding IoU / 解释一致性的提升。
+- Point 2 的核心目标是知识源变化、规则表述变化下的稳健识别，并将 illumination 等场景属性最多作为辅助分层维度，而不是主 claim。
 - Point 2 不得破坏 Point 1 的闭域 benchmark 实验口径。
+- 在没有额外数据与明确操作化定义时，不要把 Point 2 笼统表述为“跨场景鲁棒性”。
 
 ## Point 1 baseline / BML 运行约定
 - Point 1 baseline 当前优先支持 **本地 Qwen** 路径；BML 默认模型路径约定为：
@@ -39,6 +40,8 @@
 - **BML Git 远端约定**：
   - BML 平台上的仓库是直接从 **gitee clone** 下来的；
   - 因此在 BML 上默认应视 `origin = gitee`；
+  - 如果同时配置了 GitHub 与 Gitee 两个远端，默认两端都要推；
+  - 在 BML 上执行 push / pull 前先检查 `git remote -v`；
   - 在 BML 上给出 git 指令时，默认优先使用：
     - `git fetch origin`
     - `git pull origin <branch>`
