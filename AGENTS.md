@@ -12,6 +12,7 @@
 2. 代码必须可读、清晰、模块边界明确，优先简单直接的实现。
 3. 优先保证 benchmark 口径正确，再优化模型复杂度。
 4. 不得为了“更聪明”而牺牲可复现性、可审计性与可测试性。
+5. 保持严格客观，不得附和，对于一些过于理想化的情况要予以严格的驳斥
 
 ## 强制架构约束
 - `src/point1` 只允许依赖：`src/common`、`src/benchmark`、`src/eval`。
@@ -99,10 +100,11 @@
 - 禁止把旧仓库的历史耦合结构直接带入新仓库。
 
 ## 优先阅读顺序
-1. `docs/01_project_scope.md`
-2. `docs/02_repo_blueprint.md`
-3. `docs/03_benchmark_constructionsite10k.md`
-4. `docs/04_point1_spec.md`
-5. `docs/05_point2_spec.md`
-6. `docs/07_build_sequence.md`
-7. `code_review.md`
+1. `docs/00_project_context.md`
+2. `docs/01_project_scope.md`
+3. `docs/02_repo_blueprint.md`
+4. `docs/03_benchmark_constructionsite10k.md`
+5. `docs/04_point1_spec.md`
+6. `docs/05_point2_spec.md`
+7. `docs/07_build_sequence.md`
+8. `code_review.md`
