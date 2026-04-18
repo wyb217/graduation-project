@@ -83,6 +83,15 @@ class Point1BaselineRecord:
     raw_response_text: str
     parsed_output: Point1ImagePredictionSet | None
     error_message: str | None = None
+    candidate_ms: float | None = None
+    predicate_ms: float | None = None
+    executor_ms: float | None = None
+    total_ms: float | None = None
+    candidate_count: int | None = None
+    fallback_used: bool | None = None
+    predicate_backend: str | None = None
+    candidate_batch_size: int | None = None
+    max_new_tokens: int | None = None
 
     def to_dict(self) -> dict[str, object]:
         """Return a JSON-serializable dictionary."""
@@ -94,4 +103,13 @@ class Point1BaselineRecord:
             "raw_response_text": self.raw_response_text,
             "parsed_output": None if self.parsed_output is None else self.parsed_output.to_dict(),
             "error_message": self.error_message,
+            "candidate_ms": self.candidate_ms,
+            "predicate_ms": self.predicate_ms,
+            "executor_ms": self.executor_ms,
+            "total_ms": self.total_ms,
+            "candidate_count": self.candidate_count,
+            "fallback_used": self.fallback_used,
+            "predicate_backend": self.predicate_backend,
+            "candidate_batch_size": self.candidate_batch_size,
+            "max_new_tokens": self.max_new_tokens,
         }

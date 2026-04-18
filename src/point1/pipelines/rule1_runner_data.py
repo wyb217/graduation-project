@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import json
+import math
 from pathlib import Path
 
 from benchmark.constructionsite10k.loader import ConstructionSite10kDataset
@@ -67,10 +69,11 @@ def build_rule1_summary(
 ) -> dict[str, object]:
     """Build the Rule 1 summary for either fulltest or bucketed subset runs."""
     if summary_context["mode"] == "fulltest":
-        return summarize_rule1_run_from_dataset(
+        summary = summarize_rule1_run_from_dataset(
             output_path=output_path,
             target_parquet_paths=tuple(args.target_parquet),
         )
+        return _attach_runtime_summary(output_path=output_path, summary=summary)
 
     positive_split_name = str(summary_context["positive_split_name"])
     if (
@@ -96,11 +99,85 @@ def build_rule1_summary(
         )
         for split_name in args.target_split_names
     }
-    return summarize_rule1_bucketed_run(
+    summary = summarize_rule1_bucketed_run(
         output_path=output_path,
         bucket_image_ids=bucket_image_ids,
         positive_bucket_name=positive_split_name,
     )
+    return _attach_runtime_summary(output_path=output_path, summary=summary)
+
+
+def _attach_runtime_summary(
+    *,
+    output_path: Path,
+    summary: dict[str, object],
+) -> dict[str, object]:
+    records = json.loads(output_path.read_text(encoding="utf-8"))
+    candidate_values = _collect_numeric(records, "candidate_ms")
+    predicate_values = _collect_numeric(records, "predicate_ms")
+    executor_values = _collect_numeric(records, "executor_ms")
+    total_values = _collect_numeric(records, "total_ms")
+    candidate_count_values = _collect_numeric(records, "candidate_count")
+
+    fallback_values = [
+        bool(record["fallback_used"])
+        for record in records
+        if record.get("fallback_used") is not None
+    ]
+    predicate_backend = _first_present(records, "predicate_backend")
+    candidate_batch_size = _first_present(records, "candidate_batch_size")
+    max_new_tokens = _first_present(records, "max_new_tokens")
+
+    return {
+        **summary,
+        "timing_ms": {
+            "candidate": _build_distribution(candidate_values),
+            "predicate": _build_distribution(predicate_values),
+            "executor": _build_distribution(executor_values),
+            "total": _build_distribution(total_values),
+        },
+        "candidate_count_stats": _build_distribution(candidate_count_values),
+        "fallback_rate": (
+            sum(fallback_values) / len(fallback_values) if fallback_values else None
+        ),
+        "runtime_config": {
+            "predicate_backend": predicate_backend,
+            "candidate_batch_size": candidate_batch_size,
+            "max_new_tokens": max_new_tokens,
+        },
+    }
+
+
+def _collect_numeric(records: list[dict[str, object]], field_name: str) -> list[float]:
+    return [
+        float(record[field_name])
+        for record in records
+        if record.get(field_name) is not None
+    ]
+
+
+def _first_present(records: list[dict[str, object]], field_name: str):
+    for record in records:
+        value = record.get(field_name)
+        if value is not None:
+            return value
+    return None
+
+
+def _build_distribution(values: list[float]) -> dict[str, float | None]:
+    if not values:
+        return {"mean": None, "p50": None, "p95": None}
+    ordered = sorted(values)
+    return {
+        "mean": sum(ordered) / len(ordered),
+        "p50": _nearest_rank_percentile(ordered, 0.50),
+        "p95": _nearest_rank_percentile(ordered, 0.95),
+    }
+
+
+def _nearest_rank_percentile(values: list[float], quantile: float) -> float:
+    rank = max(1, math.ceil(len(values) * quantile))
+    return values[rank - 1]
 
 
 def merge_split_image_ids(

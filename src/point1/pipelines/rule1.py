@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from time import perf_counter
 
 from benchmark.constructionsite10k.types import ConstructionSiteSample
 from common.schemas.point1 import Point1ImagePredictionSet, Point1Prediction
@@ -18,6 +19,12 @@ class Rule1PipelineResult:
     image_id: str
     candidate_predictions: tuple[Point1Prediction, ...]
     image_prediction: Point1Prediction
+    candidate_ms: float = 0.0
+    predicate_ms: float = 0.0
+    executor_ms: float = 0.0
+    total_ms: float = 0.0
+    candidate_count: int = 0
+    fallback_used: bool = False
 
     def to_prediction_set(self) -> Point1ImagePredictionSet:
         """Return a baseline-compatible image-level prediction payload."""
@@ -49,15 +56,27 @@ class Rule1Pipeline:
 
     def run(self, sample: ConstructionSiteSample) -> Rule1PipelineResult:
         """Return Rule 1 predictions for one benchmark sample."""
+        total_start = perf_counter()
+        candidate_start = perf_counter()
         candidates = self._candidate_generator.generate(sample)
+        candidate_ms = (perf_counter() - candidate_start) * 1000.0
+        candidate_count = len(candidates)
+        fallback_used = bool(getattr(self._candidate_generator, "last_used_fallback", False))
         if not candidates:
             image_prediction = self._build_detection_unknown_prediction()
             return Rule1PipelineResult(
                 image_id=sample.image_id,
                 candidate_predictions=(),
                 image_prediction=image_prediction,
+                candidate_ms=candidate_ms,
+                predicate_ms=0.0,
+                executor_ms=0.0,
+                total_ms=(perf_counter() - total_start) * 1000.0,
+                candidate_count=candidate_count,
+                fallback_used=fallback_used,
             )
 
+        predicate_start = perf_counter()
         batched_extract = getattr(self._predicate_extractor, "extract_many", None)
         if callable(batched_extract):
             predicate_sets = batched_extract(sample, candidates)
@@ -65,15 +84,24 @@ class Rule1Pipeline:
             predicate_sets = tuple(
                 self._predicate_extractor.extract(sample, candidate) for candidate in candidates
             )
+        predicate_ms = (perf_counter() - predicate_start) * 1000.0
+        executor_start = perf_counter()
         candidate_predictions = tuple(
             execute_rule1_candidate(candidate, predicate_set)
             for candidate, predicate_set in zip(candidates, predicate_sets, strict=True)
         )
         image_prediction = self._aggregate_image_prediction(candidate_predictions)
+        executor_ms = (perf_counter() - executor_start) * 1000.0
         return Rule1PipelineResult(
             image_id=sample.image_id,
             candidate_predictions=candidate_predictions,
             image_prediction=image_prediction,
+            candidate_ms=candidate_ms,
+            predicate_ms=predicate_ms,
+            executor_ms=executor_ms,
+            total_ms=(perf_counter() - total_start) * 1000.0,
+            candidate_count=candidate_count,
+            fallback_used=fallback_used,
         )
 
     def _build_detection_unknown_prediction(self) -> Point1Prediction:

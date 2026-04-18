@@ -213,6 +213,75 @@ def test_run_point1_rule1_pipeline_builds_local_qwen_backend_when_requested(
     assert built["extractor_kwargs"]["crop_padding_profile"] == "rule1_ppe"
 
 
+def test_run_point1_rule1_pipeline_defaults_local_qwen_max_new_tokens_to_256(
+    tmp_path: Path,
+) -> None:
+    """The local-Qwen backend should default to the reduced generation cap."""
+    module = load_rule1_script_module()
+    dataset_path = tmp_path / "target.parquet"
+    registry_path = tmp_path / "registry.json"
+    output_path = tmp_path / "rule1.json"
+    _write_clean_rule1_fixture(dataset_path, registry_path)
+
+    built: dict[str, object] = {}
+
+    class FakeLoadConfig:
+        def __init__(self, **kwargs) -> None:  # noqa: ANN003
+            built["load_config_kwargs"] = kwargs
+
+    class FakeClient:
+        def __init__(self, config) -> None:  # noqa: ANN001
+            built["client_config"] = config
+
+    class FakeExtractor:
+        def __init__(self, **kwargs) -> None:  # noqa: ANN003
+            built["extractor_kwargs"] = kwargs
+
+    class FakePipeline:
+        def __init__(self, **kwargs) -> None:  # noqa: ANN003
+            built["pipeline_kwargs"] = kwargs
+
+    def fake_run_rule1_pipeline(  # noqa: ANN001
+        *,
+        target_samples,
+        pipeline=None,
+        show_progress=False,
+        **kwargs,
+    ):
+        built["run_kwargs"] = kwargs
+        return []
+
+    runtime_module.LocalQwenLoadConfig = FakeLoadConfig
+    runtime_module.LocalQwen3VLClient = FakeClient
+    runtime_module.LocalQwenRule1PredicateExtractor = FakeExtractor
+    runtime_module.Rule1Pipeline = FakePipeline
+    module.run_rule1_pipeline = fake_run_rule1_pipeline
+
+    argv = sys.argv
+    try:
+        sys.argv = [
+            "run_point1_rule1_pipeline.py",
+            "--target-parquet",
+            str(dataset_path),
+            "--registry",
+            str(registry_path),
+            "--target-split-names",
+            "demo_clean",
+            "demo_rule1",
+            "--predicate-backend",
+            "local_qwen",
+            "--model-path",
+            "/models/qwen3-vl",
+            "--output",
+            str(output_path),
+        ]
+        module.main()
+    finally:
+        sys.argv = argv
+
+    assert built["load_config_kwargs"]["max_new_tokens"] == 256
+
+
 def test_run_point1_rule1_pipeline_builds_hybrid_candidate_backend_when_requested(
     tmp_path: Path,
 ) -> None:

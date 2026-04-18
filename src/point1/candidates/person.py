@@ -58,9 +58,11 @@ class OpenCVHogPersonCandidateGenerator:
         self._scale = scale
         self._min_width = min_width
         self._min_height = min_height
+        self.last_used_fallback = False
 
     def generate(self, sample: ConstructionSiteSample) -> tuple[PersonCandidate, ...]:
         """Return normalized person candidates for one benchmark image."""
+        self.last_used_fallback = False
         rgb_image = _load_rgb_array(sample)
         image_height, image_width = rgb_image.shape[:2]
 
@@ -123,9 +125,11 @@ class TorchvisionPersonCandidateGenerator:
         self._person_label = person_label
         self._torch = None
         self._device = None
+        self.last_used_fallback = False
 
     def generate(self, sample: ConstructionSiteSample) -> tuple[PersonCandidate, ...]:
         """Return normalized person candidates for one benchmark image."""
+        self.last_used_fallback = False
         image = _load_pil_image(sample)
         image_width, image_height = image.size
         detections = self._detect(image)
@@ -219,12 +223,15 @@ class HogThenTorchvisionPersonCandidateGenerator:
             if fallback_generator is None
             else fallback_generator
         )
+        self.last_used_fallback = False
 
     def generate(self, sample: ConstructionSiteSample) -> tuple[PersonCandidate, ...]:
         """Return HOG candidates, or fall back to torchvision when HOG is empty."""
+        self.last_used_fallback = False
         primary_candidates = self._primary_generator.generate(sample)
         if primary_candidates:
             return primary_candidates
+        self.last_used_fallback = True
         return self._fallback_generator.generate(sample)
 
 

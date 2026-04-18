@@ -13,7 +13,12 @@
 和 `docs/09_point1_foundation_status.md` 的关系是：
 
 - `docs/09`：阶段概览，适合快速对齐状态；
+- `docs/17`：阶段总结，适合先判断“当前到底能不能算有阶段性结果”；
 - `docs/15`：详细实验记录，适合后续回顾、排错和论文整理。
+
+另外，针对“当前已跑结果在 parser / summary 修复后是否还能继续使用”的问题，当前单独维护：
+
+- `docs/16_point1_result_validity_audit.md`
 
 ---
 
@@ -37,6 +42,7 @@
 - `--candidate-batch-size 1`
 - `--predicate-context-mode crop_only`
 - `--crop-padding-profile none`
+- `--max-new-tokens 256`
 
 当前 BML 侧推荐同时固定：
 
@@ -96,6 +102,18 @@
 
 这意味着长时间运行不再完全黑箱，实验可操作性更强。
 
+现在 runner 侧还新增了**按图耗时画像**，会随 progress / checkpoint / summary 一起落盘。当前重点跟踪：
+
+- `candidate_ms`
+- `predicate_ms`
+- `executor_ms`
+- `total_ms`
+- `candidate_count`
+- `fallback_used`
+- `predicate_backend`
+- `candidate_batch_size`
+- `max_new_tokens`
+
 ### 5. Rule 1 命令面简化
 
 已完成：
@@ -122,6 +140,20 @@
 - `crop_only` 必须是稳定的基线；
 - 否则所有后续 A/B 都会被 prompt 漂移污染。
 
+### 7. local Qwen 默认吞吐优化
+
+当前默认主线已经补上两项低风险吞吐优化：
+
+- `max_new_tokens` 默认值从 `500` 下调到 `256`
+- 送入 local Qwen 的 candidate crop 会在不改 bbox 的前提下做最长边 `640px` 的压缩
+
+这里的边界要明确：
+
+- 不改 detector 原始输出 bbox；
+- 不改最终结构化输出 bbox；
+- 不改 prompt 语义；
+- 只降低 local Qwen 谓词提取阶段的推理成本。
+
 ---
 
 ## 当前关键结果
@@ -141,6 +173,33 @@
 - precision 明显优于 black-box classification-only baseline；
 - 但 unknown 仍然偏高；
 - 说明系统已经具备 controllability，但 coverage 还不够。
+
+### 1.1 Rule 1 crop padding full test（3004）
+
+`crop_padding_profile=rule1_ppe` 的 full test 结果现已补齐：
+
+- precision: `0.652`
+- recall: `0.531`
+- F1: `0.585`
+- TP / FP / FN: `172 / 92 / 152`
+- unknown rate: `0.556`
+
+相对默认主线 `crop_padding_profile=none`：
+
+- precision：`0.633 -> 0.652`
+- recall：`0.549 -> 0.531`
+- F1：`0.588 -> 0.585`
+- FP：`103 -> 92`
+- FN：`146 -> 152`
+- unknown：`1718 -> 1671`
+
+当前判断：
+
+- crop padding 的确能压一部分局部可见性相关 unknown；
+- 也能进一步降低 FP；
+- 但它没有带来更好的 full test F1；
+- 因此当前应把它视为 **precision-oriented / unknown-reduction variant**，
+  而不是默认主线替代品。
 
 ### 2. 65 张有效旧基线
 
@@ -214,6 +273,17 @@
 
 因此短期内它只应作为显式实验开关，而不是默认主线。
 
+当前代码已经给 `complete_batch()` 增加了更保守的稳定化处理：
+
+- 如果 batch 路径触发 processor / padding 相关异常，
+- 会回退到按 candidate 顺序逐条 completion，
+- 以保证实验 lane 至少不因实现脆弱性直接中断。
+
+但这仍然不意味着 batching 已经成为默认推荐路径。当前结论仍然保持：
+
+- 默认主线 = `candidate_batch_size=1`
+- `candidate_batch_size=2` 及以上只用于后续吞吐实验 lane
+
 ---
 
 ## 当前新增加的实验线：crop padding
@@ -243,24 +313,36 @@
 
 当前它还是实验线，不是默认主线。
 
+现在 full test 已经证明：
+
+- 它确实能压 `toe_covered / lower_body_covered / hard_hat_visible` 一部分 unknown；
+- 但对 `person_detection` 没有帮助；
+- 在当前固定扩张比例下，precision 提升不足以抵消 recall 回落。
+
+因此截至目前：
+
+- `rule1_ppe` 值得保留；
+- 但默认 full test 主线仍应保持 `crop_padding_profile=none`。
+
 ---
 
 ## 当前建议的实验顺序
 
 ### 先做
 
-1. 等待 BML 上“恢复旧 prompt”结果回来
-2. 确认 `crop_only + batchsize=1 + none` 是否回到旧有效 65 张基线附近
+1. 基于 `rule1_ppe` full test failure export，拆第一轮：
+   - `unknown -> no_violation`
+   - `unknown -> violation`
+   - `violation -> unknown/no_violation`
+2. 确认是否值得做 selective padding，而不是 always-on padding
 
 ### 再做
 
-3. 在 `balanced_test_13x5` 上测试：
-   - `crop_padding_profile=none`
-   - `crop_padding_profile=rule1_ppe`
+3. 尝试只在出现 `toe_covered / lower_body_covered / hard_hat_visible` unknown 时触发二次 padding 重判
 4. 重点比较：
-   - unknown rate
-   - precision / recall / F1
-   - FP/FN/unknown failure export
+   - 是否能保住默认主线 recall
+   - 是否还能继续压 FP / unknown
+   - full test 下的净 F1 变化
 
 ### 暂缓
 
@@ -281,5 +363,5 @@
 1. Rule 1 主线已经成立，不再只是原型；
 2. detector fallback 已证明有效；
 3. current bottleneck 已从“能不能跑起来”转向“如何压 unknown 并保持 controllability”；
-4. crop padding 是当前最值得优先尝试的低风险改动之一；
+4. crop padding full test 已完成，当前更像一个保守变体，而不是默认主线升级；
 5. batching 目前仍然不是研究主问题。

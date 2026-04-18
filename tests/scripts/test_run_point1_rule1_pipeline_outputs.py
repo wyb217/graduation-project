@@ -362,3 +362,90 @@ def test_run_point1_rule1_pipeline_supports_progress_checkpoint_and_failure_outp
     assert built["run_kwargs"]["checkpoint_every"] == 5
     assert built["failure_kwargs"]["output_path"] == output_path
     assert failure_path.exists()
+
+
+def test_build_rule1_summary_includes_runtime_timing_statistics(
+    tmp_path: Path,
+) -> None:
+    """Runner summaries should include aggregate timing evidence from output records."""
+    output_path = tmp_path / "rule1.json"
+    target_path = tmp_path / "target.parquet"
+    output_path.write_text(
+        """
+        [
+          {
+            "image_id": "a",
+            "provider_name": "rule1_pipeline_local_qwen",
+            "model_name": "demo",
+            "mode": "rule1_smallloop_local_qwen",
+            "raw_response_text": "",
+            "parsed_output": null,
+            "error_message": null,
+            "candidate_ms": 10.0,
+            "predicate_ms": 50.0,
+            "executor_ms": 5.0,
+            "total_ms": 65.0,
+            "candidate_count": 1,
+            "fallback_used": false,
+            "predicate_backend": "local_qwen",
+            "candidate_batch_size": 1,
+            "max_new_tokens": 256
+          },
+          {
+            "image_id": "b",
+            "provider_name": "rule1_pipeline_local_qwen",
+            "model_name": "demo",
+            "mode": "rule1_smallloop_local_qwen",
+            "raw_response_text": "",
+            "parsed_output": null,
+            "error_message": null,
+            "candidate_ms": 20.0,
+            "predicate_ms": 70.0,
+            "executor_ms": 15.0,
+            "total_ms": 105.0,
+            "candidate_count": 2,
+            "fallback_used": true,
+            "predicate_backend": "local_qwen",
+            "candidate_batch_size": 1,
+            "max_new_tokens": 256
+          }
+        ]
+        """,
+        encoding="utf-8",
+    )
+
+    args = type(
+        "Args",
+        (),
+        {
+            "target_parquet": [target_path],
+            "limit": None,
+            "target_split_names": None,
+            "registry": None,
+        },
+    )()
+
+    original = data_module.summarize_rule1_run_from_dataset
+    try:
+        data_module.summarize_rule1_run_from_dataset = lambda **kwargs: {"rule1_precision": 1.0}
+        summary = data_module.build_rule1_summary(
+            args=args,
+            output_path=output_path,
+            target_samples=(),
+            summary_context={"mode": "fulltest"},
+        )
+    finally:
+        data_module.summarize_rule1_run_from_dataset = original
+
+    assert summary["rule1_precision"] == 1.0
+    assert summary["timing_ms"]["predicate"]["mean"] == 60.0
+    assert summary["timing_ms"]["predicate"]["p50"] == 50.0
+    assert summary["timing_ms"]["predicate"]["p95"] == 70.0
+    assert summary["timing_ms"]["total"]["mean"] == 85.0
+    assert summary["candidate_count_stats"]["mean"] == 1.5
+    assert summary["fallback_rate"] == 0.5
+    assert summary["runtime_config"] == {
+        "predicate_backend": "local_qwen",
+        "candidate_batch_size": 1,
+        "max_new_tokens": 256,
+    }

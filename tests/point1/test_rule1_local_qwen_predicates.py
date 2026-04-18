@@ -284,3 +284,90 @@ def test_local_qwen_rule1_predicate_extractor_can_expand_crop_with_padding_profi
     assert none_content[0]["image"].size == (26, 51)
     assert padded_content[0]["image"].size == (30, 68)
     assert "Candidate bbox (normalized xyxy)" not in padded_content[1]["text"]
+
+
+def test_local_qwen_rule1_predicate_extractor_resizes_large_crops_before_inference(
+    sample_annotation: dict[str, object],
+) -> None:
+    """Large candidate crops should be downscaled to the configured longest-side cap."""
+    from PIL import Image
+
+    image = Image.new("RGB", (2000, 1000), color=(240, 200, 0))
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    sample = parse_sample(
+        {
+            **sample_annotation,
+            "image": {"bytes": buffer.getvalue(), "path": "demo-large.png"},
+        }
+    )
+    candidate = PersonCandidate(
+        candidate_id="person-1",
+        bbox=NormalizedBBox(0.1, 0.1, 0.9, 0.9),
+        score=0.9,
+    )
+    client = FakeLocalQwenClient(
+        """
+        {
+          "person_visible": {"state": "yes", "score": 0.95, "reason": "worker is visible"},
+          "ppe_applicable": {"state": "yes", "score": 0.92, "reason": "worker is on foot"},
+          "head_region_visible": {"state": "yes", "score": 0.88, "reason": "head is visible"},
+          "hard_hat_visible": {"state": "no", "score": 0.81, "reason": "no hard hat"},
+          "upper_body_covered": {"state": "yes", "score": 0.77, "reason": "jacket visible"},
+          "lower_body_covered": {"state": "unknown", "score": 0.42, "reason": "legs occluded"},
+          "toe_covered": {"state": "yes", "score": 0.73, "reason": "shoes visible"}
+        }
+        """
+    )
+    extractor = LocalQwenRule1PredicateExtractor(
+        client=client,
+        model_name="demo-model",
+        max_crop_longest_side=640,
+    )
+
+    extractor.extract(sample, candidate)
+
+    content = client.calls[0]["messages"][1]["content"]
+    resized_crop = content[0]["image"]
+    assert max(resized_crop.size) == 640
+    assert resized_crop.size == (640, 320)
+
+
+def test_local_qwen_rule1_predicate_extractor_does_not_upscale_small_crops(
+    sample_annotation: dict[str, object],
+) -> None:
+    """Small candidate crops should keep their original size when below the cap."""
+    sample = parse_sample(
+        {
+            **sample_annotation,
+            "image": {"bytes": _valid_png_bytes(), "path": "demo.png"},
+        }
+    )
+    candidate = PersonCandidate(
+        candidate_id="person-1",
+        bbox=NormalizedBBox(0.1, 0.2, 0.3, 0.6),
+        score=0.9,
+    )
+    client = FakeLocalQwenClient(
+        """
+        {
+          "person_visible": {"state": "yes", "score": 0.95, "reason": "worker is visible"},
+          "ppe_applicable": {"state": "yes", "score": 0.92, "reason": "worker is on foot"},
+          "head_region_visible": {"state": "yes", "score": 0.88, "reason": "head is visible"},
+          "hard_hat_visible": {"state": "no", "score": 0.81, "reason": "no hard hat"},
+          "upper_body_covered": {"state": "yes", "score": 0.77, "reason": "jacket visible"},
+          "lower_body_covered": {"state": "unknown", "score": 0.42, "reason": "legs occluded"},
+          "toe_covered": {"state": "yes", "score": 0.73, "reason": "shoes visible"}
+        }
+        """
+    )
+    extractor = LocalQwenRule1PredicateExtractor(
+        client=client,
+        model_name="demo-model",
+        max_crop_longest_side=640,
+    )
+
+    extractor.extract(sample, candidate)
+
+    content = client.calls[0]["messages"][1]["content"]
+    assert content[0]["image"].size == (26, 51)

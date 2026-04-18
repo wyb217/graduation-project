@@ -46,6 +46,9 @@ def main() -> None:
         progress_output=args.progress_output,
         checkpoint_output=args.checkpoint_output,
         checkpoint_every=args.checkpoint_every,
+        predicate_backend=args.predicate_backend,
+        candidate_batch_size=args.candidate_batch_size,
+        max_new_tokens=(args.max_new_tokens if args.predicate_backend == "local_qwen" else None),
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     write_json(args.output, [record.to_dict() for record in records])

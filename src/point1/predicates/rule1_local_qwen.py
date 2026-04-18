@@ -31,6 +31,7 @@ class LocalQwenRule1PredicateExtractor:
     candidate_batch_size: int = 1
     context_mode: Literal["crop_only", "crop_with_full_image"] = "crop_only"
     crop_padding_profile: Literal["none", "rule1_ppe"] = "none"
+    max_crop_longest_side: int = 640
 
     def __post_init__(self) -> None:
         if self.candidate_batch_size <= 0:
@@ -39,6 +40,8 @@ class LocalQwenRule1PredicateExtractor:
             raise ValueError(f"Unsupported context_mode: {self.context_mode}")
         if self.crop_padding_profile not in CROP_PADDING_PROFILES:
             raise ValueError(f"Unsupported crop_padding_profile: {self.crop_padding_profile}")
+        if self.max_crop_longest_side <= 0:
+            raise ValueError("max_crop_longest_side must be positive.")
 
     def extract(
         self,
@@ -78,6 +81,10 @@ class LocalQwenRule1PredicateExtractor:
                 image,
                 candidate.bbox,
                 padding_profile=self.crop_padding_profile,
+            )
+            candidate_crop = _resize_crop_if_needed(
+                candidate_crop,
+                max_longest_side=self.max_crop_longest_side,
             )
             valid_candidates.append((candidate, candidate_crop))
 
@@ -309,3 +316,21 @@ def _expand_bbox(
         x_max=min(1.0, bbox.x_max + right_pad),
         y_max=min(1.0, bbox.y_max + bottom_pad),
     )
+
+
+def _resize_crop_if_needed(image, *, max_longest_side: int):
+    width, height = image.size
+    longest_side = max(width, height)
+    if longest_side <= max_longest_side:
+        return image
+
+    scale = max_longest_side / float(longest_side)
+    resized_width = max(1, round(width * scale))
+    resized_height = max(1, round(height * scale))
+
+    try:
+        from PIL import Image
+    except ImportError as exc:  # pragma: no cover - runtime dependency only
+        raise ImportError("Local-Qwen Rule 1 predicate extraction requires Pillow.") from exc
+
+    return image.resize((resized_width, resized_height), Image.Resampling.BICUBIC)
