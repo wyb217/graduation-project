@@ -132,3 +132,49 @@ bridge 的导出规则：
 - `target_bbox` 会落到官方格式的 `bounding_box`
 - `reason_text` 会落到官方格式的 `reason`
 - parse 失败样本会退化成四条规则全 `null` 的官方记录，避免丢样本
+
+## 后续建议补做的 baseline 对照
+
+当前除了：
+
+- image-only black-box baseline
+- Point 1 显式证据链主方法
+
+之外，后续建议再补做一条 **detector-guided VLM baseline**，作为中间态对照组。
+
+这条实验的目标不是替代 Point 1 主方法，而是回答：
+
+> 如果先用 detector 检出目标，再把 `label + bbox` 显式放入提示词，纯 VLM 推理本身能提升多少？
+
+当前建议的定位是：
+
+- baseline / ablation
+- 不作为 Point 1 主方法主线
+- 优先在 Rule 1 与 Rule 4 上尝试
+
+建议参考的近邻工作：
+
+- [Integration of Object Detection and Small VLMs for Construction Safety Hazard Identification](https://arxiv.org/abs/2604.05210)
+
+从这篇论文的摘要看，它采用的是 detection-guided sVLM 思路：
+
+- 先用 detector 定位 worker / machinery
+- 再把检测结果嵌入结构化 prompt
+- 最后让小型 VLM 做风险推理
+
+对本仓库来说，后续可以补做的最小版本不是重写主方法，而是增加一条对照线：
+
+1. detector 输出 `label + bbox`
+2. 将这些先验作为提示词条件输入 VLM
+3. 保持最终输出仍适配本仓库统一四规则结构化协议
+
+这样就能形成三层比较：
+
+1. image-only black-box baseline
+2. detector-guided VLM baseline
+3. Point 1 evidence-chain method
+
+其研究价值在于区分：
+
+- detector 先验本身带来的增益
+- 与显式 executor / explanation 链条带来的增益

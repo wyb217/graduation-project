@@ -213,7 +213,7 @@ def test_run_point1_rule1_pipeline_builds_local_qwen_backend_when_requested(
     assert built["extractor_kwargs"]["crop_padding_profile"] == "rule1_ppe"
 
 
-def test_run_point1_rule1_pipeline_defaults_local_qwen_max_new_tokens_to_256(
+def test_run_point1_rule1_pipeline_defaults_local_qwen_max_new_tokens_to_500(
     tmp_path: Path,
 ) -> None:
     """The local-Qwen backend should default to the reduced generation cap."""
@@ -279,7 +279,7 @@ def test_run_point1_rule1_pipeline_defaults_local_qwen_max_new_tokens_to_256(
     finally:
         sys.argv = argv
 
-    assert built["load_config_kwargs"]["max_new_tokens"] == 256
+    assert built["load_config_kwargs"]["max_new_tokens"] == 500
 
 
 def test_run_point1_rule1_pipeline_builds_hybrid_candidate_backend_when_requested(

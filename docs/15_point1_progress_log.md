@@ -42,7 +42,7 @@
 - `--candidate-batch-size 1`
 - `--predicate-context-mode crop_only`
 - `--crop-padding-profile none`
-- `--max-new-tokens 256`
+- `--max-new-tokens 500`
 
 当前 BML 侧推荐同时固定：
 
@@ -144,7 +144,6 @@
 
 当前默认主线已经补上两项低风险吞吐优化：
 
-- `max_new_tokens` 默认值从 `500` 下调到 `256`
 - 送入 local Qwen 的 candidate crop 会在不改 bbox 的前提下做最长边 `640px` 的压缩
 
 这里的边界要明确：
@@ -153,6 +152,15 @@
 - 不改最终结构化输出 bbox；
 - 不改 prompt 语义；
 - 只降低 local Qwen 谓词提取阶段的推理成本。
+
+当前默认主线仍保持更保守的生成上限：
+
+- `max_new_tokens = 500`
+
+原因是：
+
+- 更短的 generation cap 可以作为后续吞吐实验变量；
+- 但在没有通过稳定 canary 验证之前，不应直接升为默认主线配置。
 
 ---
 
@@ -348,6 +356,51 @@
 
 5. 不急着重新推进 batching
 6. 不急着把 full-image context 和 crop padding 混在一起
+7. 不急着把 detector-guided VLM baseline 升成主线
+
+但这里有一条值得明确记录的**后续对照实验**：
+
+- 在现有 image-only baseline 与 Point 1 主方法之间，
+- 后续补做一条 **detector-guided VLM baseline**
+
+具体含义是：
+
+- 先用 detector 检出候选目标
+- 再把 `label + bbox` 作为显式先验放进提示词
+- 最后仍由 VLM 完成判定
+
+这样做的目的不是替代当前主线，而是回答：
+
+> detector 先验本身能给纯 VLM 判定带来多少提升？
+
+当前更推荐把它放在：
+
+- Rule 1
+- Rule 4
+
+上先做小规模对照，因为这两类规则最容易体现“显式对象先验”对判定的作用。
+
+目前可参考的近邻论文是：
+
+- [Integration of Object Detection and Small VLMs for Construction Safety Hazard Identification](https://arxiv.org/abs/2604.05210)
+
+这篇论文的相关启发点是：
+
+- 使用 object detector 先定位 worker / machinery
+- 再把检测结果嵌入结构化 prompt
+- 用 detection-guided VLM 做 construction hazard reasoning
+
+对本仓库而言，这条实验线更适合定位为：
+
+- detector-guided baseline / ablation
+- 而不是 Point 1 主方法主线
+
+原因是：
+
+- 它本质上还是让 VLM 做最终判定；
+- 而 Point 1 主线的核心价值仍然是：
+  - `candidate -> predicate -> executor -> explanation`
+  - 即显式证据链而非 detector-conditioned black-box judgement
 
 原则是：
 

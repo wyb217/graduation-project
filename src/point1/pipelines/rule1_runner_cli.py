@@ -99,7 +99,7 @@ def build_rule1_runner_parser(*, description: str) -> argparse.ArgumentParser:
     parser.add_argument(
         "--max-new-tokens",
         type=int,
-        default=256,
+        default=500,
         help="Generation cap for local Qwen predicate extraction.",
     )
     parser.add_argument(
