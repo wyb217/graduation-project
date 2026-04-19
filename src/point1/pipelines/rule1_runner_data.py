@@ -118,6 +118,8 @@ def _attach_runtime_summary(
     executor_values = _collect_numeric(records, "executor_ms")
     total_values = _collect_numeric(records, "total_ms")
     candidate_count_values = _collect_numeric(records, "candidate_count")
+    candidate_count_raw_values = _collect_numeric(records, "candidate_count_raw")
+    candidate_count_capped_values = _collect_numeric(records, "candidate_count_capped")
 
     fallback_values = [
         bool(record["fallback_used"])
@@ -127,6 +129,7 @@ def _attach_runtime_summary(
     predicate_backend = _first_present(records, "predicate_backend")
     candidate_batch_size = _first_present(records, "candidate_batch_size")
     max_new_tokens = _first_present(records, "max_new_tokens")
+    max_candidates_per_image = _first_present(records, "max_candidates_per_image")
 
     return {
         **summary,
@@ -137,6 +140,8 @@ def _attach_runtime_summary(
             "total": _build_distribution(total_values),
         },
         "candidate_count_stats": _build_distribution(candidate_count_values),
+        "candidate_count_raw_stats": _build_distribution(candidate_count_raw_values),
+        "candidate_count_capped_stats": _build_distribution(candidate_count_capped_values),
         "fallback_rate": (
             sum(fallback_values) / len(fallback_values) if fallback_values else None
         ),
@@ -144,6 +149,7 @@ def _attach_runtime_summary(
             "predicate_backend": predicate_backend,
             "candidate_batch_size": candidate_batch_size,
             "max_new_tokens": max_new_tokens,
+            "max_candidates_per_image": max_candidates_per_image,
         },
     }
 

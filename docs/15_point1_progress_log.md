@@ -357,6 +357,7 @@
 5. 不急着重新推进 batching
 6. 不急着把 full-image context 和 crop padding 混在一起
 7. 不急着把 detector-guided VLM baseline 升成主线
+8. 当前不把 candidate cap 直接升为默认主线
 
 但这里有一条值得明确记录的**后续对照实验**：
 
@@ -401,6 +402,36 @@
 - 而 Point 1 主线的核心价值仍然是：
   - `candidate -> predicate -> executor -> explanation`
   - 即显式证据链而非 detector-conditioned black-box judgement
+
+另外，围绕当前 Rule 1 长尾吞吐问题，仓库已补上一条**默认关闭**的 candidate cap 实验 lane：
+
+- 参数：`--max-candidates-per-image`
+- 作用范围：只针对 Rule 1 的 `person candidate`
+- 作用位置：在 `Rule1Pipeline.run(...)` 中，candidate 生成之后、谓词提取之前
+- 第一版策略：按 detector score 做 top-K 截断
+
+当前定位：
+
+- 只作为 canary lane
+- 不进入默认主线
+- 初始实验组固定为：
+  - `no-cap`
+  - `top-6`
+  - `top-4`
+
+这样做的原因是：
+
+- 当前 canary1000 已经证明 `candidate_count` 与 `predicate_ms` 近似线性相关；
+- 因此 candidate 数控制本身有望同时改善：
+  - 吞吐
+  - 误报
+  - unknown 长尾
+
+但当前 detector 现实也要写清楚：
+
+- `hog_then_torchvision` 只会在 **HOG 零候选** 时才触发 torchvision fallback；
+- 因此它能修复的是 **漏检**，而不是 **错检**；
+- 如果 HOG 已经给出错误候选，当前链路不会自动再调用 torchvision 进行纠正。
 
 原则是：
 

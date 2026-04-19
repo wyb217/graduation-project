@@ -386,10 +386,13 @@ def test_build_rule1_summary_includes_runtime_timing_statistics(
             "executor_ms": 5.0,
             "total_ms": 65.0,
             "candidate_count": 1,
+            "candidate_count_raw": 4,
+            "candidate_count_capped": 1,
             "fallback_used": false,
             "predicate_backend": "local_qwen",
             "candidate_batch_size": 1,
-            "max_new_tokens": 256
+            "max_new_tokens": 500,
+            "max_candidates_per_image": 1
           },
           {
             "image_id": "b",
@@ -404,10 +407,13 @@ def test_build_rule1_summary_includes_runtime_timing_statistics(
             "executor_ms": 15.0,
             "total_ms": 105.0,
             "candidate_count": 2,
+            "candidate_count_raw": 5,
+            "candidate_count_capped": 2,
             "fallback_used": true,
             "predicate_backend": "local_qwen",
             "candidate_batch_size": 1,
-            "max_new_tokens": 256
+            "max_new_tokens": 500,
+            "max_candidates_per_image": 2
           }
         ]
         """,
@@ -443,9 +449,12 @@ def test_build_rule1_summary_includes_runtime_timing_statistics(
     assert summary["timing_ms"]["predicate"]["p95"] == 70.0
     assert summary["timing_ms"]["total"]["mean"] == 85.0
     assert summary["candidate_count_stats"]["mean"] == 1.5
+    assert summary["candidate_count_raw_stats"]["mean"] == 4.5
+    assert summary["candidate_count_capped_stats"]["mean"] == 1.5
     assert summary["fallback_rate"] == 0.5
     assert summary["runtime_config"] == {
         "predicate_backend": "local_qwen",
         "candidate_batch_size": 1,
-        "max_new_tokens": 256,
+        "max_new_tokens": 500,
+        "max_candidates_per_image": 1,
     }

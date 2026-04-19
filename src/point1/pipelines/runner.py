@@ -26,6 +26,7 @@ def run_rule1_pipeline(
     predicate_backend: str | None = None,
     candidate_batch_size: int | None = None,
     max_new_tokens: int | None = None,
+    max_candidates_per_image: int | None = None,
 ) -> list[Point1BaselineRecord]:
     """Run the Rule 1 image-level pipeline over a sequence of benchmark samples."""
     active_pipeline = Rule1Pipeline() if pipeline is None else pipeline
@@ -55,10 +56,13 @@ def run_rule1_pipeline(
                     executor_ms=result.executor_ms,
                     total_ms=total_ms,
                     candidate_count=result.candidate_count,
+                    candidate_count_raw=result.candidate_count_raw,
+                    candidate_count_capped=result.candidate_count_capped,
                     fallback_used=result.fallback_used,
                     predicate_backend=predicate_backend,
                     candidate_batch_size=candidate_batch_size,
                     max_new_tokens=max_new_tokens,
+                    max_candidates_per_image=max_candidates_per_image,
                 )
             )
         except Exception as exc:  # noqa: BLE001
@@ -76,6 +80,7 @@ def run_rule1_pipeline(
                     predicate_backend=predicate_backend,
                     candidate_batch_size=candidate_batch_size,
                     max_new_tokens=max_new_tokens,
+                    max_candidates_per_image=max_candidates_per_image,
                 )
             )
         latest_record = records[-1]
@@ -91,10 +96,13 @@ def run_rule1_pipeline(
                     "executor_ms": latest_record.executor_ms,
                     "total_ms": latest_record.total_ms,
                     "candidate_count": latest_record.candidate_count,
+                    "candidate_count_raw": latest_record.candidate_count_raw,
+                    "candidate_count_capped": latest_record.candidate_count_capped,
                     "fallback_used": latest_record.fallback_used,
                     "predicate_backend": latest_record.predicate_backend,
                     "candidate_batch_size": latest_record.candidate_batch_size,
                     "max_new_tokens": latest_record.max_new_tokens,
+                    "max_candidates_per_image": latest_record.max_candidates_per_image,
                     "updated_at": datetime.now(UTC).isoformat(),
                 },
             )

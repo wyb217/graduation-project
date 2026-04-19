@@ -156,6 +156,12 @@ def build_rule1_runner_parser(*, description: str) -> argparse.ArgumentParser:
         help="Batch size for local-Qwen predicate extraction across candidates from one image.",
     )
     parser.add_argument(
+        "--max-candidates-per-image",
+        type=int,
+        default=None,
+        help="Optional score-based top-K cap applied to Rule 1 person candidates before predicate extraction.",
+    )
+    parser.add_argument(
         "--predicate-context-mode",
         choices=("crop_only", "crop_with_full_image"),
         default="crop_only",

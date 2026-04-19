@@ -88,10 +88,13 @@ class Point1BaselineRecord:
     executor_ms: float | None = None
     total_ms: float | None = None
     candidate_count: int | None = None
+    candidate_count_raw: int | None = None
+    candidate_count_capped: int | None = None
     fallback_used: bool | None = None
     predicate_backend: str | None = None
     candidate_batch_size: int | None = None
     max_new_tokens: int | None = None
+    max_candidates_per_image: int | None = None
 
     def to_dict(self) -> dict[str, object]:
         """Return a JSON-serializable dictionary."""
@@ -108,8 +111,11 @@ class Point1BaselineRecord:
             "executor_ms": self.executor_ms,
             "total_ms": self.total_ms,
             "candidate_count": self.candidate_count,
+            "candidate_count_raw": self.candidate_count_raw,
+            "candidate_count_capped": self.candidate_count_capped,
             "fallback_used": self.fallback_used,
             "predicate_backend": self.predicate_backend,
             "candidate_batch_size": self.candidate_batch_size,
             "max_new_tokens": self.max_new_tokens,
+            "max_candidates_per_image": self.max_candidates_per_image,
         }

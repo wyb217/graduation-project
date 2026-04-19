@@ -49,6 +49,7 @@ def main() -> None:
         predicate_backend=args.predicate_backend,
         candidate_batch_size=args.candidate_batch_size,
         max_new_tokens=(args.max_new_tokens if args.predicate_backend == "local_qwen" else None),
+        max_candidates_per_image=args.max_candidates_per_image,
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     write_json(args.output, [record.to_dict() for record in records])

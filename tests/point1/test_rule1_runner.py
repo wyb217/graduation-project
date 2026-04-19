@@ -54,7 +54,10 @@ def _build_image_prediction(*, image_id: str, decision_state: str) -> Rule1Pipel
         executor_ms=5.5,
         total_ms=52.0,
         candidate_count=1,
+        candidate_count_raw=3,
+        candidate_count_capped=1,
         fallback_used=False,
+        max_candidates_per_image=1,
     )
 
 
@@ -165,7 +168,8 @@ def test_run_rule1_pipeline_writes_progress_and_checkpoint(
         checkpoint_every=1,
         predicate_backend="local_qwen",
         candidate_batch_size=1,
-        max_new_tokens=256,
+        max_new_tokens=500,
+        max_candidates_per_image=1,
     )
 
     assert len(records) == 2
@@ -178,10 +182,13 @@ def test_run_rule1_pipeline_writes_progress_and_checkpoint(
     assert progress["executor_ms"] == 5.5
     assert progress["total_ms"] == 52.0
     assert progress["candidate_count"] == 1
+    assert progress["candidate_count_raw"] == 3
+    assert progress["candidate_count_capped"] == 1
     assert progress["fallback_used"] is False
     assert progress["predicate_backend"] == "local_qwen"
     assert progress["candidate_batch_size"] == 1
-    assert progress["max_new_tokens"] == 256
+    assert progress["max_new_tokens"] == 500
+    assert progress["max_candidates_per_image"] == 1
     checkpoint = read_json(checkpoint_path)
     assert len(checkpoint) == 2
     assert checkpoint[0]["image_id"] == sample_a.image_id
@@ -190,7 +197,10 @@ def test_run_rule1_pipeline_writes_progress_and_checkpoint(
     assert checkpoint[0]["executor_ms"] == 5.5
     assert checkpoint[0]["total_ms"] == 52.0
     assert checkpoint[0]["candidate_count"] == 1
+    assert checkpoint[0]["candidate_count_raw"] == 3
+    assert checkpoint[0]["candidate_count_capped"] == 1
     assert checkpoint[0]["fallback_used"] is False
     assert checkpoint[0]["predicate_backend"] == "local_qwen"
     assert checkpoint[0]["candidate_batch_size"] == 1
-    assert checkpoint[0]["max_new_tokens"] == 256
+    assert checkpoint[0]["max_new_tokens"] == 500
+    assert checkpoint[0]["max_candidates_per_image"] == 1

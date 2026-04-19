@@ -24,7 +24,10 @@ class Rule1PipelineResult:
     executor_ms: float = 0.0
     total_ms: float = 0.0
     candidate_count: int = 0
+    candidate_count_raw: int = 0
+    candidate_count_capped: int = 0
     fallback_used: bool = False
+    max_candidates_per_image: int | None = None
 
     def to_prediction_set(self) -> Point1ImagePredictionSet:
         """Return a baseline-compatible image-level prediction payload."""
@@ -42,6 +45,7 @@ class Rule1Pipeline:
         *,
         candidate_generator: OpenCVHogPersonCandidateGenerator | object | None = None,
         predicate_extractor: HeuristicRule1PredicateExtractor | object | None = None,
+        max_candidates_per_image: int | None = None,
     ) -> None:
         self._candidate_generator = (
             OpenCVHogPersonCandidateGenerator()
@@ -53,6 +57,9 @@ class Rule1Pipeline:
             if predicate_extractor is None
             else predicate_extractor
         )
+        if max_candidates_per_image is not None and max_candidates_per_image <= 0:
+            raise ValueError("max_candidates_per_image must be positive when provided.")
+        self._max_candidates_per_image = max_candidates_per_image
 
     def run(self, sample: ConstructionSiteSample) -> Rule1PipelineResult:
         """Return Rule 1 predictions for one benchmark sample."""
@@ -60,7 +67,13 @@ class Rule1Pipeline:
         candidate_start = perf_counter()
         candidates = self._candidate_generator.generate(sample)
         candidate_ms = (perf_counter() - candidate_start) * 1000.0
-        candidate_count = len(candidates)
+        candidate_count_raw = len(candidates)
+        candidates = _cap_candidates(
+            candidates,
+            max_candidates_per_image=self._max_candidates_per_image,
+        )
+        candidate_count_capped = len(candidates)
+        candidate_count = candidate_count_capped
         fallback_used = bool(getattr(self._candidate_generator, "last_used_fallback", False))
         if not candidates:
             image_prediction = self._build_detection_unknown_prediction()
@@ -73,7 +86,10 @@ class Rule1Pipeline:
                 executor_ms=0.0,
                 total_ms=(perf_counter() - total_start) * 1000.0,
                 candidate_count=candidate_count,
+                candidate_count_raw=candidate_count_raw,
+                candidate_count_capped=candidate_count_capped,
                 fallback_used=fallback_used,
+                max_candidates_per_image=self._max_candidates_per_image,
             )
 
         predicate_start = perf_counter()
@@ -101,7 +117,10 @@ class Rule1Pipeline:
             executor_ms=executor_ms,
             total_ms=(perf_counter() - total_start) * 1000.0,
             candidate_count=candidate_count,
+            candidate_count_raw=candidate_count_raw,
+            candidate_count_capped=candidate_count_capped,
             fallback_used=fallback_used,
+            max_candidates_per_image=self._max_candidates_per_image,
         )
 
     def _build_detection_unknown_prediction(self) -> Point1Prediction:
@@ -157,3 +176,16 @@ def _decision_priority(decision_state: str) -> int:
         "violation": 2,
     }
     return priority.get(decision_state, -1)
+
+
+def _cap_candidates(
+    candidates: tuple,
+    *,
+    max_candidates_per_image: int | None,
+):
+    if max_candidates_per_image is None or len(candidates) <= max_candidates_per_image:
+        return candidates
+    sorted_candidates = tuple(
+        sorted(candidates, key=lambda candidate: candidate.score, reverse=True)
+    )
+    return sorted_candidates[:max_candidates_per_image]

@@ -45,6 +45,22 @@ class FakeBatchPredicateExtractor(FakePredicateExtractor):
         return tuple(self.predicate_sets[candidate.candidate_id] for candidate in candidates)
 
 
+class FakeTrackingBatchPredicateExtractor(FakeBatchPredicateExtractor):
+    """Track the candidate ids passed into the batched extractor."""
+
+    def __init__(self, predicate_sets: dict[str, Rule1PredicateSet]) -> None:
+        super().__init__(predicate_sets)
+        self.last_candidate_ids: tuple[str, ...] = ()
+
+    def extract_many(  # noqa: ANN001
+        self,
+        sample,
+        candidates: tuple[PersonCandidate, ...],
+    ) -> tuple[Rule1PredicateSet, ...]:
+        self.last_candidate_ids = tuple(candidate.candidate_id for candidate in candidates)
+        return super().extract_many(sample, candidates)
+
+
 def _predicate(state: str, score: float, reason: str) -> Rule1PredicateResult:
     return Rule1PredicateResult(
         state=state,
@@ -255,3 +271,100 @@ def test_rule1_pipeline_uses_batched_predicate_extractor_when_available(
 
     assert extractor.batch_calls == 1
     assert result.image_prediction.decision_state == "violation"
+
+
+def test_rule1_pipeline_caps_candidates_by_score_before_predicate_extraction(
+    sample_annotation: dict[str, object],
+) -> None:
+    """The pipeline should sort by score and keep only the highest-scoring K candidates."""
+    sample = parse_sample(
+        {
+            **sample_annotation,
+            "image": {"bytes": b"fake-image", "path": "demo.jpg"},
+        }
+    )
+    candidates = (
+        PersonCandidate("person-low", NormalizedBBox(0.1, 0.2, 0.3, 0.6), 0.2),
+        PersonCandidate("person-high", NormalizedBBox(0.4, 0.2, 0.6, 0.7), 0.9),
+        PersonCandidate("person-mid", NormalizedBBox(0.6, 0.2, 0.8, 0.7), 0.6),
+    )
+    predicate_sets = {
+        "person-low": Rule1PredicateSet(
+            candidate_id="person-low",
+            person_visible=_predicate("yes", 0.95, "person visible"),
+            hard_hat_visible=_predicate("yes", 0.9, "hard hat visible"),
+            upper_body_covered=_predicate("yes", 0.8, "upper body covered"),
+            lower_body_covered=_predicate("yes", 0.8, "lower body covered"),
+            toe_covered=_predicate("yes", 0.8, "toe covered"),
+        ),
+        "person-high": Rule1PredicateSet(
+            candidate_id="person-high",
+            person_visible=_predicate("yes", 0.95, "person visible"),
+            hard_hat_visible=_predicate("no", 0.9, "no hard hat"),
+            upper_body_covered=_predicate("yes", 0.8, "upper body covered"),
+            lower_body_covered=_predicate("yes", 0.8, "lower body covered"),
+            toe_covered=_predicate("yes", 0.8, "toe covered"),
+        ),
+        "person-mid": Rule1PredicateSet(
+            candidate_id="person-mid",
+            person_visible=_predicate("yes", 0.95, "person visible"),
+            hard_hat_visible=_predicate("unknown", 0.2, "unclear"),
+            upper_body_covered=_predicate("yes", 0.8, "upper body covered"),
+            lower_body_covered=_predicate("yes", 0.8, "lower body covered"),
+            toe_covered=_predicate("yes", 0.8, "toe covered"),
+        ),
+    }
+    extractor = FakeTrackingBatchPredicateExtractor(predicate_sets)
+    pipeline = Rule1Pipeline(
+        candidate_generator=FakeCandidateGenerator(candidates),
+        predicate_extractor=extractor,
+        max_candidates_per_image=2,
+    )
+
+    result = pipeline.run(sample)
+
+    assert extractor.last_candidate_ids == ("person-high", "person-mid")
+    assert len(result.candidate_predictions) == 2
+    assert result.candidate_count_raw == 3
+    assert result.candidate_count_capped == 2
+    assert result.max_candidates_per_image == 2
+    assert result.image_prediction.decision_state == "violation"
+
+
+def test_rule1_pipeline_keeps_all_candidates_when_cap_is_none(
+    sample_annotation: dict[str, object],
+) -> None:
+    """No candidate cap should preserve the original candidate count."""
+    sample = parse_sample(
+        {
+            **sample_annotation,
+            "image": {"bytes": b"fake-image", "path": "demo.jpg"},
+        }
+    )
+    candidates = (
+        PersonCandidate("person-1", NormalizedBBox(0.1, 0.2, 0.3, 0.6), 0.2),
+        PersonCandidate("person-2", NormalizedBBox(0.4, 0.2, 0.6, 0.7), 0.9),
+    )
+    predicate_sets = {
+        candidate.candidate_id: Rule1PredicateSet(
+            candidate_id=candidate.candidate_id,
+            person_visible=_predicate("yes", 0.95, "person visible"),
+            hard_hat_visible=_predicate("yes", 0.9, "hard hat visible"),
+            upper_body_covered=_predicate("yes", 0.8, "upper body covered"),
+            lower_body_covered=_predicate("yes", 0.8, "lower body covered"),
+            toe_covered=_predicate("yes", 0.8, "toe covered"),
+        )
+        for candidate in candidates
+    }
+    extractor = FakeTrackingBatchPredicateExtractor(predicate_sets)
+    pipeline = Rule1Pipeline(
+        candidate_generator=FakeCandidateGenerator(candidates),
+        predicate_extractor=extractor,
+    )
+
+    result = pipeline.run(sample)
+
+    assert extractor.last_candidate_ids == ("person-1", "person-2")
+    assert result.candidate_count_raw == 2
+    assert result.candidate_count_capped == 2
+    assert result.max_candidates_per_image is None

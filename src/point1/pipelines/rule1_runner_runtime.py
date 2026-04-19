@@ -16,11 +16,15 @@ def build_rule1_runtime(
 ) -> tuple[Rule1Pipeline | None, str, str, str]:
     """Build the Rule 1 runtime components from CLI arguments."""
     candidate_generator = build_candidate_generator(args)
+    max_candidates_per_image = getattr(args, "max_candidates_per_image", None)
 
     if args.predicate_backend == "heuristic" and candidate_generator is None:
         return None, "rule1_pipeline", "opencv_hog+heuristic_rule1", "rule1_smallloop"
     if args.predicate_backend == "heuristic":
-        pipeline = Rule1Pipeline(candidate_generator=candidate_generator)
+        pipeline = Rule1Pipeline(
+            candidate_generator=candidate_generator,
+            max_candidates_per_image=max_candidates_per_image,
+        )
         return pipeline, "rule1_pipeline", "opencv_hog+heuristic_rule1", "rule1_smallloop"
 
     if args.predicate_backend == "vlm":
@@ -36,6 +40,7 @@ def build_rule1_runtime(
         pipeline = Rule1Pipeline(
             candidate_generator=candidate_generator,
             predicate_extractor=predicate_extractor,
+            max_candidates_per_image=max_candidates_per_image,
         )
         return (
             pipeline,
@@ -65,6 +70,7 @@ def build_rule1_runtime(
     pipeline = Rule1Pipeline(
         candidate_generator=candidate_generator,
         predicate_extractor=predicate_extractor,
+        max_candidates_per_image=max_candidates_per_image,
     )
     return (
         pipeline,

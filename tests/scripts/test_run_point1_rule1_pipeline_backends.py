@@ -188,6 +188,8 @@ def test_run_point1_rule1_pipeline_builds_local_qwen_backend_when_requested(
             "flash_attention_2",
             "--candidate-batch-size",
             "8",
+            "--max-candidates-per-image",
+            "6",
             "--predicate-context-mode",
             "crop_with_full_image",
             "--crop-padding-profile",
@@ -211,6 +213,7 @@ def test_run_point1_rule1_pipeline_builds_local_qwen_backend_when_requested(
     assert built["extractor_kwargs"]["candidate_batch_size"] == 8
     assert built["extractor_kwargs"]["context_mode"] == "crop_with_full_image"
     assert built["extractor_kwargs"]["crop_padding_profile"] == "rule1_ppe"
+    assert built["pipeline_kwargs"]["max_candidates_per_image"] == 6
 
 
 def test_run_point1_rule1_pipeline_defaults_local_qwen_max_new_tokens_to_500(
@@ -280,6 +283,7 @@ def test_run_point1_rule1_pipeline_defaults_local_qwen_max_new_tokens_to_500(
         sys.argv = argv
 
     assert built["load_config_kwargs"]["max_new_tokens"] == 500
+    assert built["pipeline_kwargs"]["max_candidates_per_image"] is None
 
 
 def test_run_point1_rule1_pipeline_builds_hybrid_candidate_backend_when_requested(
