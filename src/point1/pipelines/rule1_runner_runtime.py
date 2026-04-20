@@ -6,7 +6,10 @@ import argparse
 
 from point1.baselines import OpenAICompatibleVisionClient, load_provider_catalog
 from point1.baselines.local_qwen import LocalQwen3VLClient, LocalQwenLoadConfig
-from point1.candidates import HogThenTorchvisionPersonCandidateGenerator
+from point1.candidates import (
+    HogThenTorchvisionPersonCandidateGenerator,
+    TorchvisionPersonCandidateGenerator,
+)
 from point1.pipelines.rule1 import Rule1Pipeline
 from point1.predicates import LocalQwenRule1PredicateExtractor, VLMRule1PredicateExtractor
 
@@ -84,6 +87,10 @@ def build_candidate_generator(args: argparse.Namespace):
     """Build the Rule 1 candidate generator from the selected backend."""
     if args.candidate_backend == "hog":
         return None
+    if args.candidate_backend == "torchvision":
+        return TorchvisionPersonCandidateGenerator(
+            score_threshold=args.torchvision_score_threshold,
+        )
     return HogThenTorchvisionPersonCandidateGenerator(
         score_threshold=args.torchvision_score_threshold,
     )

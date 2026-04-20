@@ -60,7 +60,7 @@ def build_rule1_runner_parser(*, description: str) -> argparse.ArgumentParser:
     parser.add_argument("--output", type=Path, required=False, default=None)
     parser.add_argument(
         "--candidate-backend",
-        choices=("hog", "hog_then_torchvision"),
+        choices=("hog", "torchvision", "hog_then_torchvision"),
         default="hog",
         help="Candidate generator backend for Rule 1.",
     )

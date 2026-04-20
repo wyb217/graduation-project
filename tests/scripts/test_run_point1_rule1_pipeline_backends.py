@@ -346,3 +346,65 @@ def test_run_point1_rule1_pipeline_builds_hybrid_candidate_backend_when_requeste
     assert built["candidate_kwargs"] == {"score_threshold": 0.42}
     assert built["run_pipeline_type"] == "FakePipeline"
     assert "candidate_generator" in built["pipeline_kwargs"]
+
+
+def test_run_point1_rule1_pipeline_builds_torchvision_candidate_backend_when_requested(
+    tmp_path: Path,
+) -> None:
+    """The script should wire the pure torchvision candidate backend on demand."""
+    module = load_rule1_script_module()
+    dataset_path = tmp_path / "target.parquet"
+    registry_path = tmp_path / "registry.json"
+    output_path = tmp_path / "rule1.json"
+    _write_clean_rule1_fixture(dataset_path, registry_path)
+
+    built: dict[str, object] = {}
+
+    class FakeCandidateGenerator:
+        def __init__(self, **kwargs) -> None:  # noqa: ANN003
+            built["candidate_kwargs"] = kwargs
+
+    class FakePipeline:
+        def __init__(self, **kwargs) -> None:  # noqa: ANN003
+            built["pipeline_kwargs"] = kwargs
+
+    def fake_run_rule1_pipeline(  # noqa: ANN001
+        *,
+        target_samples,
+        pipeline=None,
+        show_progress=False,
+        **kwargs,
+    ):
+        built["run_pipeline_type"] = type(pipeline).__name__
+        built["run_kwargs"] = kwargs
+        return []
+
+    runtime_module.TorchvisionPersonCandidateGenerator = FakeCandidateGenerator
+    runtime_module.Rule1Pipeline = FakePipeline
+    module.run_rule1_pipeline = fake_run_rule1_pipeline
+
+    argv = sys.argv
+    try:
+        sys.argv = [
+            "run_point1_rule1_pipeline.py",
+            "--target-parquet",
+            str(dataset_path),
+            "--registry",
+            str(registry_path),
+            "--target-split-names",
+            "demo_clean",
+            "demo_rule1",
+            "--candidate-backend",
+            "torchvision",
+            "--torchvision-score-threshold",
+            "0.55",
+            "--output",
+            str(output_path),
+        ]
+        module.main()
+    finally:
+        sys.argv = argv
+
+    assert built["candidate_kwargs"] == {"score_threshold": 0.55}
+    assert built["run_pipeline_type"] == "FakePipeline"
+    assert "candidate_generator" in built["pipeline_kwargs"]

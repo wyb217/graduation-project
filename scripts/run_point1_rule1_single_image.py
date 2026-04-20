@@ -47,7 +47,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--candidate-backend",
-        choices=("hog", "hog_then_torchvision"),
+        choices=("hog", "torchvision", "hog_then_torchvision"),
         default="hog",
         help="Candidate generator backend for Rule 1.",
     )
